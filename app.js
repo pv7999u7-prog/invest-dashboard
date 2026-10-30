@@ -4,6 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
+const APP_VERSION = '2026.10.30-4';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 
 // 配置類別的顏色跟著類別走（依試算表 Total Overall 的順序），不跟排名走
 const CAT_COLORS = { '虛擬貨幣': '--s2', '放貸': '--s7', '台股': '--s3', "Kids' 台股": '--s5', "Kids' 美股": '--s4', '美股': '--s1' };
@@ -983,6 +984,7 @@ function pageSettings(first) {
     <button class="btn" id="cfgSave">儲存並更新</button>
     <p class="msg" id="cfgMsg" style="margin:10px 0 0">${state.status === 'err' ? '<span class="msg err">' + esc(state.error) + '</span>' : state.updated ? '上次更新：' + esc(state.updated) : ''}</p>
     ${first ? '' : '<button class="btn ghost" id="cfgClear">清除這台裝置上的資料與設定</button>'}
+    <p class="msg" style="margin:12px 0 0;text-align:center;color:var(--text-muted)">App 版本 ${APP_VERSION}</p>
   </div>
   ${first ? '' : securitySection(canBio)}`;
 }
@@ -1085,6 +1087,15 @@ render();
 if (lock.locked) unlockWithBio();   // 打開就直接跳 Face ID；被系統擋下時，畫面上還有按鈕可以按
 else refresh();
 
+// 有新版時自動換上：每次打開／回到前景都檢查一次，新版接手後重新載入一次
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js');
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    reg.update();
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update(); });
+  });
 }
