@@ -376,6 +376,8 @@ function derive(d) {
 let state = { cfg: null, raw: null, updated: '', data: null, status: 'idle', error: '', lastFetch: 0 };
 
 function loadLocal() {
+  loadLockRecord();
+  if (lockEnabled()) return;   // 有鎖：資料是加密的，等解鎖後才讀
   try { state.cfg = JSON.parse(localStorage.getItem(LS.cfg) || 'null'); } catch (e) {}
   try {
     const c = JSON.parse(localStorage.getItem(LS.cache) || 'null');
@@ -384,6 +386,7 @@ function loadLocal() {
 }
 
 async function refresh() {
+  if (lock.locked) return;
   if (!state.cfg || !state.cfg.url) { setStatus('idle'); return; }
   if (state.status === 'busy') return;
   setStatus('busy');
@@ -393,7 +396,7 @@ async function refresh() {
     const j = await res.json();
     if (!j.ok) throw new Error(j.error === 'unauthorized' ? '密碼不對' : (j.error || '讀取失敗'));
     state.raw = j.data; state.updated = j.updated; state.data = parseAll(j.data); state.lastFetch = Date.now();
-    try { localStorage.setItem(LS.cache, JSON.stringify({ raw: j.data, updated: j.updated })); } catch (e) {}
+    await persist();
     setStatus('ok');
     render();
   } catch (e) {
@@ -909,7 +912,8 @@ function pageSettings(first) {
     <button class="btn" id="cfgSave">儲存並更新</button>
     <p class="msg" id="cfgMsg" style="margin:10px 0 0">${state.status === 'err' ? '<span class="msg err">' + esc(state.error) + '</span>' : state.updated ? '上次更新：' + esc(state.updated) : ''}</p>
     ${first ? '' : '<button class="btn ghost" id="cfgClear">清除這台裝置上的資料與設定</button>'}
-  </div>`;
+  </div>
+  ${first ? '' : securitySection(canBio)}`;
 }
 
 /* ================================================================
@@ -923,9 +927,16 @@ const PAGES = { overview: pageOverview, us: pageUs, tw: pageTw, crypto: pageCryp
 function render() {
   const r = route();
   const tab = r.split('/')[0];
+  charts.length = 0;
+  ['#tabbar', '#eye', '#refresh'].forEach(s => { $(s).style.display = lock.locked ? 'none' : ''; });
+  if (lock.locked) {
+    $('#back').classList.remove('show');
+    $('#view').innerHTML = pageLock();
+    bindLock();
+    return;
+  }
   document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   $('#back').classList.toggle('show', r.includes('/'));
-  charts.length = 0;
   let html;
   if (!state.cfg || !state.cfg.url) html = pageSettings(true);
   else if (r === 'more/settings' || r === 'more') html = PAGES[r](state.data);
@@ -951,8 +962,10 @@ function bindPage() {
     const msg = $('#cfgMsg');
     if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) { msg.innerHTML = '<span class="msg err">網址要是 https://script.google.com/… 開頭</span>'; return; }
     if (!key) { msg.innerHTML = '<span class="msg err">請輸入密碼</span>'; return; }
+    const keyChanged = !state.cfg || state.cfg.key !== key;
     state.cfg = { url, key };
-    try { localStorage.setItem(LS.cfg, JSON.stringify(state.cfg)); } catch (e) {}
+    if (keyChanged) await rewrapPassword(key);
+    await persist();
     msg.textContent = '讀取中…';
     await refresh();
     if (state.status === 'ok') { location.hash = 'overview'; render(); }
@@ -961,10 +974,12 @@ function bindPage() {
   const clr = $('#cfgClear');
   if (clr) clr.addEventListener('click', () => {
     if (!confirm('要清除這台裝置上的設定和快取資料嗎？試算表本身不受影響。')) return;
-    try { localStorage.removeItem(LS.cfg); localStorage.removeItem(LS.cache); } catch (e) {}
+    try { [LS.cfg, LS.cache, LOCK_KEY, ENC_KEY].forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    lock.rec = null; lock.dk = null; lock.locked = false;
     state = { cfg: null, raw: null, updated: '', data: null, status: 'idle', error: '', lastFetch: 0 };
     setStatus('idle'); location.hash = 'overview'; render();
   });
+  bindSecurity();
 }
 
 /* ================================================================
@@ -979,13 +994,23 @@ let rt;
 window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawCharts, 150); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render());
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && Date.now() - state.lastFetch > AUTO_REFRESH_MIN * 60000) refresh();
+  if (document.visibilityState === 'hidden') { lock.hiddenAt = Date.now(); return; }
+  if (lockEnabled() && !lock.locked && lock.hiddenAt && Date.now() - lock.hiddenAt > RELOCK_SEC * 1000) {
+    relock();
+    unlockWithBio();
+    return;
+  }
+  if (Date.now() - state.lastFetch > AUTO_REFRESH_MIN * 60000) refresh();
 });
+
+let canBio = false;
+bioAvailable().then(v => { canBio = v; if (route() === 'more/settings') render(); });
 
 loadLocal();
 setStatus('idle');
 render();
-refresh();
+if (lock.locked) unlockWithBio();   // 打開就直接跳 Face ID；被系統擋下時，畫面上還有按鈕可以按
+else refresh();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js');
