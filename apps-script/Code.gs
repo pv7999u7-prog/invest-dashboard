@@ -3,6 +3,7 @@
 //   執行身分：我　／　誰可以存取：所有人
 // App 每次打開都會帶著密碼來讀一次資料；密碼不對就什麼都拿不到。
 
+// 只要改這一行：密碼放在兩個單引號中間，例如 const KEY = 'abc123';
 const KEY = '請改成你自己的密碼';
 
 // 要讀的工作表與範圍（試算表版面有大改時，才需要調整這裡）
@@ -24,7 +25,9 @@ const RANGES = {
 function doPost(e) {
   let key = '';
   try { key = JSON.parse(e.postData.contents).key || ''; } catch (err) {}
-  if (KEY === '請改成你自己的密碼' || key !== KEY) {
+  // 用字串比對，KEY 就算忘了加引號寫成數字也能對上
+  const expected = String(KEY).trim();
+  if (!expected || expected.startsWith('請改成') || String(key).trim() !== expected) {
     return json({ ok: false, error: 'unauthorized' });
   }
   return json({ ok: true, updated: now(), data: readAll() });
