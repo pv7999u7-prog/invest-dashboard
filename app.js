@@ -190,9 +190,10 @@ function parsePlans(rows) {
   const plans = [];
   for (let r = 0; r < rows.length; r++) {
     if (str(rows[r][0]) !== '股名') continue;
+    const currency = /USD/i.test(str(rows[r][1])) ? 'USD' : 'NTD';   // 表頭「USD金額/月」或「金額/月」
     for (let k = r + 1; k < rows.length && str(rows[k][0]) && str(rows[k][0]) !== 'Total'; k++) {
       const x = rows[k];
-      plans.push({ name: str(x[0]), monthly: num(x[1]), start: str(x[2]), to: str(x[3]), months: num(x[4]), total: num(x[5]), shares: num(x[6]), price: num(x[7]), value: num(x[8]), pct: num(x[9]) });
+      plans.push({ currency, name: str(x[0]), monthly: num(x[1]), start: str(x[2]), to: str(x[3]), months: num(x[4]), total: num(x[5]), shares: num(x[6]), price: num(x[7]), value: num(x[8]), pct: num(x[9]) });
     }
   }
   return plans;
@@ -250,7 +251,7 @@ function parseKidsTw(rows) {
     for (let r = d + 1; r < rows.length; r++) {
       const x = rows[r];
       if (!isDate(x[0])) continue;
-      out.lumps.push({ date: normDate(x[0]), name: str(x[1]), price: num(x[2]), inv: num(x[5]), shares: num(x[6]), value: num(x[8]) });
+      out.lumps.push({ date: normDate(x[0]), name: str(x[1]), price: num(x[2]), inv: num(x[5]), shares: num(x[6]), cur: num(x[7]), value: num(x[8]) });
     }
   }
   return out;
@@ -329,6 +330,8 @@ function parseAll(raw) {
     expense: safe(parseExpense, raw.expense), house: safe(parseHouse, raw.house)
   };
   derive(d);
+  d.usAll = safe(() => combineUs(d));
+  d.twAll = safe(() => combineTw(d));
   return d;
 }
 
@@ -368,6 +371,64 @@ function derive(d) {
     const target = d.plan.years.find(y => y.year === year);
     if (target) t.target = { year, value: target.target * 10000 };
   }
+}
+
+// 美股／台股頁要看到全部部位：券商帳戶＋我的定期定額＋小孩帳戶
+function position(o) {
+  const cost = o.cost != null ? o.cost : (o.avg != null && o.qty != null ? o.avg * o.qty : null);
+  const pl = o.pl != null ? o.pl : (o.value != null && cost != null ? o.value - cost : null);
+  return Object.assign({}, o, { cost, pl,
+    avg: o.avg != null ? o.avg : (cost != null && o.qty ? cost / o.qty : null),
+    pct: o.pct != null ? o.pct : (cost ? pl / cost : null) });
+}
+function summarize(name, items, extra = {}) {
+  const value = items.reduce((s, x) => s + (x.value || 0), 0), cost = items.reduce((s, x) => s + (x.cost || 0), 0);
+  return Object.assign({ name, value, cost, earn: value - cost, pct: cost ? (value - cost) / cost : null }, extra);
+}
+
+function combineUs(d) {
+  const items = [], groups = [];
+  if (d.us) {
+    d.us.holdings.forEach(x => items.push(position({ group: x.broker, label: x.code, code: x.code, qty: x.qty, price: x.price, avg: x.avg, value: x.value, cost: x.cost, pl: x.pl, pct: x.pct })));
+    d.us.brokers.forEach(b => groups.push({ name: b.name, value: b.value, cost: b.cost, earn: b.earn, pct: b.pct, irr: d.us.brokerIrr[b.name] }));
+  }
+  const dca = d.myDca ? d.myDca.plans.filter(p => p.currency === 'USD' && p.value) : [];
+  dca.forEach(p => items.push(position({ group: '定期定額', label: p.name + ' 定期', code: p.name, qty: p.shares, price: p.price, value: p.value, cost: p.total, pct: p.pct,
+    note: `每月 US$${dec(p.monthly || 0, 0)}・${p.start} 起` })));
+  if (dca.length) groups.push(summarize('定期定額', items.filter(x => x.group === '定期定額')));
+  if (d.kidsUs) {
+    Object.keys(d.kidsUs.holdings).forEach(kid => d.kidsUs.holdings[kid].forEach(x =>
+      items.push(position({ group: '小孩', owner: kid, label: x.code + ' ' + kid, code: x.code, qty: x.qty, price: x.price, avg: x.avg, value: x.value, cost: x.cost, pct: x.pct }))));
+    if (items.some(x => x.group === '小孩')) groups.push(summarize('小孩', items.filter(x => x.group === '小孩')));
+  }
+  return { items, groups, total: summarize('全部', groups) };
+}
+
+function combineTw(d) {
+  const items = [], groups = [];
+  const mine = [];
+  if (d.tw) d.tw.holdings.forEach(x => mine.push(position({ group: '我的', label: x.name, name: x.name, code: x.code, qty: x.qty, price: x.price, avg: x.avg, value: x.value, pl: x.pl, pct: x.pct })));
+  const dca = d.myDca ? d.myDca.plans.filter(p => p.currency === 'NTD' && p.value) : [];
+  dca.forEach(p => mine.push(position({ group: '我的', label: p.name + ' 定期', name: p.name, code: p.name, qty: p.shares, price: p.price, value: p.value, cost: p.total })));
+  items.push(...mine);
+  if (d.tw && d.tw.total) {
+    const dv = dca.reduce((s, p) => s + p.value, 0), dc = dca.reduce((s, p) => s + (p.total || 0), 0);
+    const v = d.tw.total.value + dv, c = d.tw.total.cost + dc;
+    groups.push({ name: '我的', value: v, cost: c, earn: v - c, pct: c ? (v - c) / c : null, irr: d.tw.irr, cash: d.tw.total.cash });
+  }
+  // 小孩：定期定額與單筆買進都是「每人」的數字，依股票合併成每個小孩一筆部位
+  const k = d.kidsTw;
+  if (k && k.kids.length) {
+    const byStock = {};
+    k.plans.forEach(p => { const s = byStock[p.name] = byStock[p.name] || { qty: 0, value: 0, cost: 0, price: null }; s.qty += p.shares || 0; s.value += p.value || 0; s.cost += p.total || 0; s.price = p.price; });
+    k.lumps.forEach(l => { const s = byStock[l.name] = byStock[l.name] || { qty: 0, value: 0, cost: 0, price: null }; s.qty += l.shares || 0; s.value += l.value || 0; s.cost += l.inv || 0; if (s.price == null) s.price = l.cur; });
+    k.kids.forEach(kid => Object.keys(byStock).forEach(name => {
+      const s = byStock[name];
+      items.push(position({ group: '小孩', owner: kid.name, label: name + ' ' + kid.name, name, code: name, qty: s.qty, price: s.price, value: s.value, cost: s.cost }));
+    }));
+    groups.push(summarize('小孩', items.filter(x => x.group === '小孩')));
+  }
+  return { items, groups, total: summarize('全部', groups) };
 }
 
 /* ================================================================
@@ -606,6 +667,7 @@ function drawCharts() { charts.forEach(c => { const el = document.getElementById
 
 let trendRange = '1Y';
 let usBroker = 'all';
+let twGroup = 'all';
 
 function pageOverview(d) {
   const t = d.total;
@@ -667,29 +729,36 @@ function holdingRows(list, money) {
     <div class="r"><div class="t1">${money(x.value)}</div><div class="t2 ${cls(x.pct)}">${pct(x.pct)}</div></div></div>`).join('');
 }
 
+// 持股頁共用：分組按鈕、報酬率圖、明細
+const groupLabel = x => (x.owner ? x.group + '・' + x.owner : x.group);
+function holdingsSection(id, all, filter, segId, money, priceFmt) {
+  const names = all.groups.map(g => g.name);
+  const list = all.items.filter(x => filter === 'all' || x.group === filter).sort((a, b) => b.pct - a.pct);
+  return `<div class="card"><h3>個股報酬率</h3><p class="cap">點長條可看持股與損益</p>
+    <div class="seg" id="${segId}"><button data-b="all" class="${filter === 'all' ? 'on' : ''}">全部</button>${names.map(b => `<button data-b="${esc(b)}" class="${filter === b ? 'on' : ''}">${esc(b)}</button>`).join('')}</div>
+    ${chart(id, el => divergingChart(el, list.map(x => ({ label: x.label, pct: x.pct,
+      html: tr('帳戶', esc(groupLabel(x))) + tr('股數', qty(x.qty)) + tr('均價／現價', hidden ? MASK : priceFmt(x.avg) + '／' + priceFmt(x.price)) + tr('現值', money(x.value)) + tr('損益', money === ntd ? signedNtd(x.pl) : signedUsd(x.pl)) }))))}</div>
+  <div class="sec">持股明細</div><div class="list">${holdingRows(list.slice().sort((a, b) => b.value - a.value).map(x => ({
+    title: x.label, value: x.value, pct: x.pct, sub: `${esc(groupLabel(x))}・${qty(x.qty)} 股・均價 ${hidden ? MASK : priceFmt(x.avg)}` })), money)}</div>`;
+}
+
 function pageUs(d) {
-  const u = d.us;
-  if (!u) return '<div class="empty">找不到美股的資料</div>';
-  const t = u.total || {};
+  const u = d.us, all = d.usAll;
+  if (!u || !all) return '<div class="empty">找不到美股的資料</div>';
+  const t = all.total;
+  const fx = d.total && d.total.fx;
+  if (!all.groups.some(g => g.name === usBroker)) usBroker = 'all';
   let h = `<h1 class="title">美股</h1>
   <div class="card hero">
-    <div class="lbl">美股總值（CUBE＋Firstrade）</div>
+    <div class="lbl">美股總值（含定期定額與小孩）</div>
     <div class="big">${usd(t.value)}</div>
-    <div class="meta">投入 ${usd(t.cost)}・約 ${d.total && d.total.fx && t.value ? ntd(t.value * d.total.fx) : '—'}</div>
+    <div class="meta">投入 ${usd(t.cost)}${fx ? '・約 ' + ntd(t.value * fx) : ''}</div>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><span class="pill ${cls(t.earn)}">${signedUsd(t.earn)}（${pct(t.pct)}）</span>
-    <span class="pill up" style="background:var(--tint-wash);color:var(--tint)">IRR ${pctPlain(u.irr)}</span></div>
+    ${u.irr != null ? `<span class="pill up" style="background:var(--tint-wash);color:var(--tint)">券商帳戶 IRR ${pctPlain(u.irr)}</span>` : ''}</div>
   </div>
-  <div class="tiles">${u.brokers.map(b => `<div class="tile"><div class="k">${esc(b.name)}</div><div class="v">${usd(b.value)}</div>
-    <div class="n"><span class="${cls(b.pct)}">${pct(b.pct)}</span>・IRR ${pctPlain(u.brokerIrr[b.name])}</div></div>`).join('')}</div>`;
-
-  const brokers = [...new Set(u.holdings.map(x => x.broker))];
-  const list = u.holdings.filter(x => usBroker === 'all' || x.broker === usBroker).sort((a, b) => b.pct - a.pct);
-  h += `<div class="card"><h3>個股報酬率</h3><p class="cap">點長條可看持股與損益</p>
-    <div class="seg" id="brokerSeg"><button data-b="all" class="${usBroker === 'all' ? 'on' : ''}">全部</button>${brokers.map(b => `<button data-b="${esc(b)}" class="${usBroker === b ? 'on' : ''}">${esc(b)}</button>`).join('')}</div>
-    ${chart('c-us', el => divergingChart(el, list.map(x => ({ label: x.code, pct: x.pct,
-      html: tr('券商', esc(x.broker)) + tr('股數', qty(x.qty)) + tr('均價／現價', hidden ? MASK : '$' + dec(x.avg, 2) + '／$' + dec(x.price, 2)) + tr('現值', usd(x.value)) + tr('損益', signedUsd(x.pl)) }))))}</div>`;
-  h += `<div class="sec">持股明細</div><div class="list">${holdingRows(list.slice().sort((a, b) => b.value - a.value).map(x => ({
-    title: x.code, value: x.value, pct: x.pct, sub: `${esc(x.broker)}・${qty(x.qty)} 股・均價 ${hidden ? MASK : '$' + dec(x.avg, 2)}` })), v => usd(v))}</div>`;
+  <div class="tiles">${all.groups.map(g => `<div class="tile"><div class="k">${esc(g.name)}</div><div class="v">${usd(g.value)}</div>
+    <div class="n"><span class="${cls(g.pct)}">${pct(g.pct)}</span>${g.irr != null ? '・IRR ' + pctPlain(g.irr) : ''}</div></div>`).join('')}</div>`;
+  h += holdingsSection('c-us', all, usBroker, 'brokerSeg', usd, v => (v == null ? '—' : '$' + dec(v, 2)));
   h += txList(u.tx.slice(-12).reverse().map(x => ({
     date: x.date, title: `${x.buy ? '買進' : x.sell ? '賣出' : ''} ${x.name}`, sub: `${esc(x.where)}・${x.buy || x.sell ? qty(x.buy || x.sell) + ' 股' : ''} @ ${x.price != null ? '$' + dec(x.price, 2) : '—'}`,
     right: x.buy ? `<span>買</span>` : x.sell ? '<span class="up">賣</span>' : '' })));
@@ -704,27 +773,29 @@ function txList(items) {
 }
 
 function pageTw(d) {
-  const w = d.tw;
-  if (!w) return '<div class="empty">找不到台股的資料</div>';
-  const t = w.total || {};
+  const w = d.tw, all = d.twAll;
+  if (!w || !all) return '<div class="empty">找不到台股的資料</div>';
+  const t = all.total;
+  if (!all.groups.some(g => g.name === twGroup)) twGroup = 'all';
   let h = `<h1 class="title">台股</h1>
   <div class="card hero">
-    <div class="lbl">台股總值</div>
+    <div class="lbl">台股總值（含定期定額與小孩）</div>
     <div class="big">${ntd(t.value)}</div>
-    <div class="meta">投入 ${ntd(t.cost)}・現金 ${ntd(t.cash)}</div>
+    <div class="meta">投入 ${ntd(t.cost)}${w.total ? '・現金 ' + ntd(w.total.cash) : ''}</div>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><span class="pill ${cls(t.earn)}">${signedNtd(t.earn)}（${pct(t.pct)}）</span>
-    <span class="pill up" style="background:var(--tint-wash);color:var(--tint)">IRR ${pctPlain(w.irr)}</span></div>
-  </div>`;
-  const list = w.holdings.slice().sort((a, b) => b.pct - a.pct);
-  h += `<div class="card"><h3>個股報酬率</h3><p class="cap">點長條可看持股與損益</p>
-    ${chart('c-tw', el => divergingChart(el, list.map(x => ({ label: x.name, pct: x.pct,
-      html: tr('代號', esc(x.code)) + tr('股數', qty(x.qty)) + tr('均價／現價', hidden ? MASK : dec(x.avg, 1) + '／' + dec(x.price, 1)) + tr('現值', ntd(x.value)) + tr('損益', signedNtd(x.pl)) }))))}</div>`;
-  const tv = w.holdings.reduce((s, x) => s + (x.value || 0), 0);
-  h += `<div class="card"><h3>持股比重</h3><p class="cap">依目前市值</p>
-    ${chart('c-tw-w', el => hbarChart(el, w.holdings.slice().sort((a, b) => b.value - a.value).map(x => ({ label: x.name, value: x.value, text: pctPlain(x.value / tv),
-      html: tr('現值', ntd(x.value)) + tr('比重', pctPlain(x.value / tv)) }))))}</div>`;
-  h += `<div class="sec">持股明細</div><div class="list">${holdingRows(w.holdings.slice().sort((a, b) => b.value - a.value).map(x => ({
-    title: `${x.name}`, value: x.value, pct: x.pct, sub: `${esc(x.code)}・${qty(x.qty)} 股・均價 ${hidden ? MASK : dec(x.avg, 1)}` })), ntd)}</div>`;
+    ${w.irr != null ? `<span class="pill up" style="background:var(--tint-wash);color:var(--tint)">我的帳戶 IRR ${pctPlain(w.irr)}</span>` : ''}</div>
+  </div>
+  <div class="tiles">${all.groups.map(g => `<div class="tile"><div class="k">${esc(g.name)}</div><div class="v">${ntd(g.value)}</div>
+    <div class="n"><span class="${cls(g.pct)}">${pct(g.pct)}</span>${g.irr != null ? '・IRR ' + pctPlain(g.irr) : ''}</div></div>`).join('')}</div>`;
+  h += holdingsSection('c-tw', all, twGroup, 'twSeg', ntd, v => (v == null ? '—' : dec(v, 1)));
+  // 持股比重：同一檔股票（例如我的 0050 和小孩的 0050）合併計算
+  const shown = all.items.filter(x => twGroup === 'all' || x.group === twGroup);
+  const byName = {};
+  shown.forEach(x => { byName[x.name] = (byName[x.name] || 0) + (x.value || 0); });
+  const tv = Object.values(byName).reduce((s, v) => s + v, 0);
+  h += `<div class="card"><h3>持股比重</h3><p class="cap">依目前市值，同一檔股票合併計算</p>
+    ${chart('c-tw-w', el => hbarChart(el, Object.keys(byName).sort((a, b) => byName[b] - byName[a]).map(n => ({ label: n, value: byName[n], text: pctPlain(byName[n] / tv),
+      html: tr('現值', ntd(byName[n])) + tr('比重', pctPlain(byName[n] / tv)) }))))}</div>`;
   h += txList(w.tx.slice(-12).reverse().map(x => ({
     date: x.date, title: `${x.buy ? '買進' : x.sell ? '賣出' : ''} ${x.name}`, sub: `${x.buy || x.sell ? qty(x.buy || x.sell) + ' 股' : ''} @ ${x.price != null ? dec(x.price, 1) : '—'}`,
     right: x.buy ? '<span>買</span>' : x.sell ? '<span class="up">賣</span>' : '' })));
@@ -820,8 +891,8 @@ function pageDca(d) {
     <div class="meta">投入約 ${ntd(tot.invNTD)}・${usd(tot.invUSD)}</div><div style="margin-top:10px"><span class="pill ${cls(tot.pct)}">${pct(tot.pct)}</span></div></div>`;
   const plans = m.plans.filter(p => p.monthly);
   h += `<div class="sec">扣款計畫</div><div class="list">${(plans.length ? plans : m.plans).map(p => `<div class="row">
-    <div class="main"><div class="t1">${esc(p.name)}</div><div class="t2">每月 ${p.monthly ? (p.monthly < 5000 ? usd(p.monthly) : ntd(p.monthly)) : '未扣款'}・${esc(p.start)} 起・${p.months || 0} 個月・${qty(p.shares)} 股</div></div>
-    <div class="r"><div class="t1">${p.value ? (p.monthly < 5000 ? usd(p.value, 0) : ntd(p.value)) : '—'}</div><div class="t2 ${cls(p.pct)}">${p.pct != null ? pct(p.pct) : ''}</div></div></div>`).join('')}</div>`;
+    <div class="main"><div class="t1">${esc(p.name)}</div><div class="t2">每月 ${p.monthly ? (p.currency === 'USD' ? usd(p.monthly) : ntd(p.monthly)) : '未扣款'}・${esc(p.start)} 起・${p.months || 0} 個月・${qty(p.shares)} 股</div></div>
+    <div class="r"><div class="t1">${p.value ? (p.currency === 'USD' ? usd(p.value, 0) : ntd(p.value)) : '—'}</div><div class="t2 ${cls(p.pct)}">${p.pct != null ? pct(p.pct) : ''}</div></div></div>`).join('')}</div>`;
   return h;
 }
 
@@ -956,6 +1027,8 @@ function bindPage() {
   if (rs) rs.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; trendRange = b.dataset.r; render(); });
   const bs = $('#brokerSeg');
   if (bs) bs.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; usBroker = b.dataset.b; render(); });
+  const ts = $('#twSeg');
+  if (ts) ts.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; twGroup = b.dataset.b; render(); });
   const save = $('#cfgSave');
   if (save) save.addEventListener('click', async () => {
     const url = $('#cfgUrl').value.trim(), key = $('#cfgKey').value;
