@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.10.30-4';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.10.30-5';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 
 // 配置類別的顏色跟著類別走（依試算表 Total Overall 的順序），不跟排名走
 const CAT_COLORS = { '虛擬貨幣': '--s2', '放貸': '--s7', '台股': '--s3', "Kids' 台股": '--s5', "Kids' 美股": '--s4', '美股': '--s1' };
@@ -24,9 +24,21 @@ function num(v) {
   if (!isFinite(n)) return null;
   return s.endsWith('%') ? n / 100 : n;
 }
-const isDate = v => /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(str(v));
 const pad = n => String(n).padStart(2, '0');
-const normDate = v => { const [y, m, d] = str(v).split('/'); return `${y}/${pad(m)}/${pad(d)}`; };
+// 試算表的日期可能以「2026/10/30」文字、或 ISO 時間字串（2026-10-29T16:00:00.000Z）傳過來，統一成 yyyy/mm/dd
+function toDateStr(v) {
+  const s = str(v);
+  let m = s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  if (m) return `${m[1]}/${pad(m[2])}/${pad(m[3])}`;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d)) return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
+  }
+  return '';
+}
+const isDate = v => !!toDateStr(v);
+const normDate = toDateStr;
+const dateText = v => toDateStr(v) || str(v);
 const toTime = d => { const [y, m, dd] = d.split('/').map(Number); return new Date(y, m - 1, dd).getTime(); };
 const esc = s => str(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -180,6 +192,7 @@ function parseCrypto(rows) {
   return out;
 }
 function fmtCompactDate(s) {
+  if (toDateStr(s)) return toDateStr(s);
   s = str(s);
   if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}/${s.slice(4, 6)}/${s.slice(6)}`;
   if (/^\d{6}$/.test(s)) return `${s.slice(0, 4)}/${s.slice(4, 6)}`;
@@ -194,7 +207,7 @@ function parsePlans(rows) {
     const currency = /USD/i.test(str(rows[r][1])) ? 'USD' : 'NTD';   // 表頭「USD金額/月」或「金額/月」
     for (let k = r + 1; k < rows.length && str(rows[k][0]) && str(rows[k][0]) !== 'Total'; k++) {
       const x = rows[k];
-      plans.push({ currency, name: str(x[0]), monthly: num(x[1]), start: str(x[2]), to: str(x[3]), months: num(x[4]), total: num(x[5]), shares: num(x[6]), price: num(x[7]), value: num(x[8]), pct: num(x[9]) });
+      plans.push({ currency, name: str(x[0]), monthly: num(x[1]), start: dateText(x[2]), to: dateText(x[3]), months: num(x[4]), total: num(x[5]), shares: num(x[6]), price: num(x[7]), value: num(x[8]), pct: num(x[9]) });
     }
   }
   return plans;
@@ -316,7 +329,7 @@ function parseHouse(rows) {
     const x = rows[r];
     if (!str(x[0]) || !num(x[2])) continue;
     const housePing = num(x[4]), estPark = num(x[10]), estUnit = num(x[11]);
-    list.push({ name: str(x[0]), date: str(x[1]), price: num(x[2]), ping: num(x[3]), housePing, parkN: num(x[6]), unit: num(x[8]),
+    list.push({ name: str(x[0]), date: dateText(x[1]).replace(/^(\d{4}\/\d{2})\/01$/, '$1'), price: num(x[2]), ping: num(x[3]), housePing, parkN: num(x[6]), unit: num(x[8]),
       estUnit, estPark, est: housePing && estUnit ? housePing * estUnit + (estPark || 0) : null });
   }
   return list;
@@ -637,6 +650,42 @@ function columnChart(host, labels, series, opts = {}) {
   });
 }
 
+// 甜甜圈圖：中間顯示總額，點區塊時換成該類別
+function donutChart(host, slices, total) {
+  host.innerHTML = '';
+  if (!slices.length || !total) return;
+  const S = Math.min(host.clientWidth, 260), H = S;
+  const cx = host.clientWidth / 2, cy = H / 2, R = S / 2 - 6, r = R * 0.62;
+  const svg = svgEl('svg', { viewBox: `0 0 ${host.clientWidth} ${H}`, height: H }, host);
+  const arc = (a0, a1, rr) => [cx + rr * Math.sin(a0), cy - rr * Math.cos(a0), cx + rr * Math.sin(a1), cy - rr * Math.cos(a1)];
+  const center1 = svgText(svg, cx, cy - 4, '', { 'text-anchor': 'middle', 'font-size': 22, 'font-weight': 700, fill: css('--text-primary') });
+  const center2 = svgText(svg, cx, cy + 18, '', { 'text-anchor': 'middle', 'font-size': 12.5, fill: css('--text-secondary') });
+  const setCenter = s => {
+    center1.textContent = s ? pctPlain(s.value / total) : (hidden ? '••••' : dec(total / 10000, 0) + ' 萬');
+    center2.textContent = s ? s.label + (hidden ? '' : '・' + dec(s.value / 10000, 1) + ' 萬') : '總資產';
+  };
+  let a = 0, active = null;
+  const paths = slices.map(s => {
+    const sweep = s.value / total * Math.PI * 2;
+    const a0 = a, a1 = a + sweep; a = a1;
+    const large = sweep > Math.PI ? 1 : 0;
+    const [x0, y0, x1, y1] = arc(a0, a1, R), [x2, y2, x3, y3] = arc(a1, a0, r);
+    const d = sweep >= Math.PI * 2 - 1e-6
+      ? `M${cx},${cy - R}A${R},${R} 0 1 1 ${cx - 0.01},${cy - R}ZM${cx},${cy - r}A${r},${r} 0 1 0 ${cx - 0.01},${cy - r}Z`
+      : `M${x0},${y0}A${R},${R} 0 ${large} 1 ${x1},${y1}L${x2},${y2}A${r},${r} 0 ${large} 0 ${x3},${y3}Z`;
+    const p = svgEl('path', { d, fill: css(s.color), stroke: css('--card'), 'stroke-width': 2, 'stroke-linejoin': 'round', style: 'cursor:pointer;transition:transform .15s,opacity .15s;transform-origin:' + cx + 'px ' + cy + 'px' }, svg);
+    const mid = (a0 + a1) / 2;
+    const pick = () => {
+      active = active === s ? null : s;
+      paths.forEach(q => { q.el.style.opacity = active && q.s !== active ? 0.35 : 1; q.el.style.transform = q.s === active ? `translate(${4 * Math.sin(q.mid)}px, ${-4 * Math.cos(q.mid)}px)` : ''; });
+      setCenter(active);
+    };
+    p.addEventListener('click', pick);
+    return { el: p, s, mid };
+  });
+  setCenter(null);
+}
+
 // 橫條：rows {label, value, color, html, text}
 function hbarChart(host, rows) {
   host.innerHTML = '';
@@ -697,8 +746,8 @@ function pageOverview(d) {
 
   const alloc = t.alloc.filter(a => a.value > 0);
   const sum = alloc.reduce((s, a) => s + a.value, 0);
-  h += `<div class="card"><h3>資產配置</h3><p class="cap">依 Total Overall 的分類</p>
-    <div class="stack">${alloc.map(a => `<div style="width:${a.value / sum * 100}%;background:var(${a.color})"></div>`).join('')}</div></div>
+  h += `<div class="card"><h3>資產配置</h3><p class="cap">依 Total Overall 的分類，點區塊可看金額</p>
+    ${chart('c-alloc', el => donutChart(el, alloc.map(a => ({ label: a.name, value: a.value, color: a.color })), sum))}</div>
   <div class="list">${alloc.map(a => `<div class="row link" data-go="${allocLink(a.cat)}">
       <span class="swatch" style="background:var(${a.color})"></span>
       <div class="main"><div class="t1">${esc(a.name)}</div><div class="t2">${a.parts.map(p => esc(p.sub === 'NTD' || p.sub === 'USD' ? p.where : p.sub)).filter(Boolean).join('・')}</div></div>
@@ -847,7 +896,15 @@ const MORE = [
   { id: 'settings', title: '設定', sub: '資料來源與密碼', icon: '⚙', color: '--axis' }
 ];
 function pageMore() {
-  return `<h1 class="title">更多</h1><div class="list">${MORE.map(m => `<div class="row link" data-go="more/${m.id}">
+  // 試算表網址由 Apps Script 回傳，程式碼裡不寫死
+  const url = state.raw && state.raw._sheetUrl;
+  const sheetRow = url
+    ? `<a class="row link" href="${esc(url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <span class="badge" style="background:#188038">▦</span>
+        <div class="main"><div class="t1">原始資料</div><div class="t2">打開 Google 試算表</div></div><span class="chev">↗</span></a>`
+    : `<div class="row"><span class="badge" style="background:var(--axis)">▦</span>
+        <div class="main"><div class="t1">原始資料</div><div class="t2">請先更新 Apps Script 程式碼並部署新版本</div></div></div>`;
+  return `<h1 class="title">更多</h1><div class="list">${sheetRow}</div><div class="list">${MORE.map(m => `<div class="row link" data-go="more/${m.id}">
     <span class="badge" style="background:var(${m.color})">${m.icon}</span>
     <div class="main"><div class="t1">${m.title}</div><div class="t2">${m.sub}</div></div><span class="chev">›</span></div>`).join('')}</div>`;
 }

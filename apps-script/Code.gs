@@ -46,13 +46,15 @@ function readAll() {
     const [sheetName, a1] = RANGES[name];
     const sheet = ss.getSheetByName(sheetName);
     if (!sheet) { data[name] = []; return; }
+    const isDateValue = v => Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime());
     const rows = sheet.getRange(a1).getValues().map(row => row.map(v =>
-      v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy/MM/dd') : v));
+      isDateValue(v) ? Utilities.formatDate(v, tz, 'yyyy/MM/dd') : v));
     // 去掉尾端的空白列，減少傳輸量
     let last = rows.length;
     while (last > 0 && rows[last - 1].every(v => v === '')) last--;
     data[name] = rows.slice(0, last);
   });
+  data._sheetUrl = ss.getUrl();   // App「更多 → 原始資料」用來打開這份試算表
   return data;
 }
 
