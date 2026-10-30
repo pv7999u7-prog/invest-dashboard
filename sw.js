@@ -1,8 +1,8 @@
 // 離線快取：只快取 App 本身的檔案；試算表資料（script.google.com）一律不經過快取
 // 改了程式後，把 VERSION 改一下，下次連網開啟時就會換成新版
 const PREFIX = 'inv-';
-const VERSION = PREFIX + 'v7';
-const FILES = ['./', 'index.html', 'lock.js', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'apple-touch-icon.png', 'apple-touch-icon-167.png', 'apple-touch-icon-152.png', 'icon-192.png', 'icon-512.png'];
+const VERSION = PREFIX + 'v8';
+const FILES = ['./', 'index.html', 'lock.js', 'app.js', 'manifest.webmanifest', 'icon-v2-180.png', 'icon-v2-192.png', 'icon-v2-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -18,6 +18,7 @@ self.addEventListener('activate', e => {
 // cache: 'no-cache' 讓瀏覽器每次都跟 GitHub 確認，不會拿到 10 分鐘內的舊檔
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  if (e.request.destination === 'image') return;   // 圖示交給瀏覽器直接抓，加入主畫面時才拿得到
   e.respondWith(
     fetch(e.request, { cache: 'no-cache' })
       .then(res => {
