@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.10.30-5';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.10.30-6';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 
 // 配置類別的顏色跟著類別走（依試算表 Total Overall 的順序），不跟排名走
 const CAT_COLORS = { '虛擬貨幣': '--s2', '放貸': '--s7', '台股': '--s3', "Kids' 台股": '--s5', "Kids' 美股": '--s4', '美股': '--s1' };
@@ -1018,7 +1018,7 @@ function pageHouse(d) {
       <div class="kv"><span>購入總價</span><span>${hidden ? MASK : int(x.price) + ' 萬'}</span></div>
       <div class="kv"><span>坪數（房屋）</span><span>${x.ping}（${x.housePing}）坪</span></div>
       <div class="kv"><span>車位</span><span>${x.parkN || 0} 個</span></div>
-      <div class="kv"><span>購入單價／估計單價</span><span>${x.unit} → ${x.estUnit} 萬/坪</span></div>
+      <div class="kv"><span>購入單價／估計單價</span><span>${x.unit != null ? dec(x.unit, 1) : "—"} → ${x.estUnit != null ? dec(x.estUnit, 1) : "—"} 萬/坪</span></div>
       <div class="kv"><span>估計現值</span><span>${hidden ? MASK : int(x.est) + ' 萬'}</span></div></div>`;
   });
   return h;
