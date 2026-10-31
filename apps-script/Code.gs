@@ -6,6 +6,9 @@
 // 只要改這一行：密碼放在兩個單引號中間，例如 const KEY = 'abc123';
 const KEY = '請改成你自己的密碼';
 
+// 程式碼版本（App 設定頁會顯示，用來確認部署的是不是最新版；這行不用改）
+const SCRIPT_VERSION = 3;
+
 // 要讀的工作表與範圍（試算表版面有大改時，才需要調整這裡）
 const RANGES = {
   total:     ['Total Overall', 'A1:Z200'],
@@ -56,6 +59,7 @@ function readAll() {
     data[name] = rows.slice(0, last);
   });
   data._sheetUrl = ss.getUrl();   // App「更多 → 原始資料」用來打開這份試算表
+  data._scriptVersion = SCRIPT_VERSION;
   return data;
 }
 
