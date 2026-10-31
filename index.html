@@ -8,37 +8,37 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="HK">
-<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#071224">
 <link rel="apple-touch-icon" href="https://pv7999u7-prog.github.io/invest-dashboard/icon-v6-180.png">
 <link rel="icon" href="icon-v6-192.png">
 <link rel="manifest" href="manifest.webmanifest">
 <style>
-/* 跟 HK 圖示同一套風格：深炭灰底、亮橘重點色、銀白文字（圖示裡白色的 K）。只有這一套深色主題 */
+/* 跟 HK 圖示同一套風格：深藍絲緞底、鏡面銀字、冰藍光圈。只有這一套深色主題 */
 :root {
   color-scheme: dark;
-  --page: #0f1115;
-  --card: #16191f;              /* 圖表描邊、間隙也用這個色，要是實色 */
-  --card-2: #20242c;
-  --text-primary: #f2f2f0;
-  --text-secondary: #b5b9c2;
-  --text-muted: #7c828e;
-  --grid: #262a33;
-  --axis: #3a3f4a;
-  --sep: rgba(255,255,255,0.07);
-  --border: rgba(255,255,255,0.09);
-  --gold: #f08a2c;              /* 重點色（沿用變數名稱）：圖示的橘 */
-  --gold-hi: #ffb15c;
-  --gold-lo: #c9621a;
-  --tint: #f5933a;
-  --tint-wash: rgba(240,138,44,0.14);
-  /* 圖表類別色：已用 dataviz 驗證器在 #16191f 上通過（亮度帶、彩度、色盲分辨、對比） */
-  --s1: #d4763a; --s2: #8b7cf6; --s3: #14a29b; --s4: #b38a30;
-  --s5: #c25ea8; --s6: #3f9a5b; --s7: #5b8def; --s8: #e05f5f;
-  --area: rgba(240,138,44,0.16);
+  --page: #071224;
+  --card: #0f1d33;              /* 圖表描邊、間隙也用這個色，要是實色 */
+  --card-2: #172a47;
+  --text-primary: #eef3f8;
+  --text-secondary: #a9b8cb;
+  --text-muted: #6f819a;
+  --grid: #1c2e4a;
+  --axis: #2f4566;
+  --sep: rgba(170,200,235,0.08);
+  --border: rgba(170,200,235,0.14);
+  --gold: #7cc1ff;              /* 重點色（沿用變數名稱）：圖示外圈的冰藍光 */
+  --gold-hi: #b9defd;
+  --gold-lo: #3f86d6;
+  --tint: #7cc1ff;
+  --tint-wash: rgba(90,169,255,0.14);
+  /* 圖表類別色：已用 dataviz 驗證器在 #0f1d33 上通過（亮度帶、彩度、色盲分辨、對比） */
+  --s1: #5b8def; --s2: #d4763a; --s3: #14a29b; --s4: #b38a30;
+  --s5: #c25ea8; --s6: #3f9a5b; --s7: #8b7cf6; --s8: #e05f5f;
+  --area: rgba(124,193,255,0.16);
   --pos: #5b8def; --neg: #e05f5f;
   --good-text: #5fd39a; --bad-text: #ff7a7a;
-  --tabbar: rgba(15,17,21,0.9);
-  --shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 10px 30px rgba(0,0,0,.4);
+  --tabbar: rgba(7,18,36,0.9);
+  --shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 10px 30px rgba(0,0,0,.45);
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { background: var(--page); }
@@ -47,9 +47,9 @@ html, body { margin: 0; }
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(900px 500px at 50% -10%, rgba(240,138,44,0.16), transparent 60%),
+    radial-gradient(900px 500px at 50% -10%, rgba(90,169,255,0.16), transparent 60%),
     radial-gradient(600px 400px at 110% 40%, rgba(255,255,255,0.025), transparent 60%),
-    linear-gradient(180deg, #14161b 0%, #0f1115 40%, #0b0c0f 100%);
+    linear-gradient(180deg, #0c1a30 0%, #081325 40%, #050c18 100%);
 }
 body {
   color: var(--text-primary);
@@ -83,16 +83,16 @@ input { font: inherit; }
 .iconbtn svg { width: 21px; height: 21px; }
 
 main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
-/* 標題與大數字：低調的銀白（像圖示裡白色的 K），不搶眼 */
+/* 標題與大數字：鏡面銀（像圖示裡的 HK 字），不搶眼 */
 .title, .hero .big {
-  background: linear-gradient(180deg, #f7f7f5 0%, #dfe2e7 60%, #b9bec8 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #d9e3ee 55%, #8fa6bf 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .title { font-size: 32px; font-weight: 700; letter-spacing: -.01em; margin: 2px 0 14px; }
 
 /* ---------- cards ---------- */
 .card, .tile, .list {
-  background: linear-gradient(160deg, #1d2027 0%, #16191f 55%, #121419 100%);
+  background: linear-gradient(160deg, #132541 0%, #0f1d33 55%, #0b1628 100%);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
 }
@@ -104,10 +104,10 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 /* 主卡：金框＋藍紫霓虹邊光 */
 .hero {
   position: relative; overflow: hidden;
-  background: radial-gradient(420px 220px at 85% -20%, rgba(240,138,44,0.16), transparent 70%),
-              linear-gradient(160deg, #26211c 0%, #17191e 60%, #111317 100%);
-  border: 1px solid rgba(240,138,44,0.45);
-  box-shadow: 0 0 0 1px rgba(240,138,44,0.25) inset, 0 0 24px rgba(240,138,44,0.18), 0 12px 32px rgba(0,0,0,.45);
+  background: radial-gradient(420px 220px at 85% -20%, rgba(90,169,255,0.16), transparent 70%),
+              linear-gradient(160deg, #173055 0%, #0f1d33 60%, #0a1527 100%);
+  border: 1px solid rgba(90,169,255,0.45);
+  box-shadow: 0 0 0 1px rgba(90,169,255,0.25) inset, 0 0 24px rgba(90,169,255,0.18), 0 12px 32px rgba(0,0,0,.45);
 }
 .hero::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -153,7 +153,7 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 /* ---------- segmented ---------- */
 .seg { display: flex; background: rgba(0,0,0,0.35); border: 1px solid var(--sep); border-radius: 11px; padding: 3px; gap: 2px; margin-bottom: 12px; }
 .seg button { flex: 1; font-size: 13px; padding: 6px 4px; border-radius: 8px; color: var(--text-secondary); }
-.seg button.on { background: linear-gradient(180deg, #ffab5e, #e8701a); color: #1a0c02; font-weight: 700; box-shadow: 0 2px 8px rgba(240,138,44,.25); }
+.seg button.on { background: linear-gradient(180deg, #f4f8fc, #9fb3c9); color: #0a1527; font-weight: 700; box-shadow: 0 2px 8px rgba(90,169,255,.25); }
 
 /* ---------- charts ---------- */
 .chart { position: relative; width: 100%; touch-action: pan-y; }
@@ -163,9 +163,9 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .legend i.ln { height: 2px; width: 14px; vertical-align: 3px; }
 .tip {
-  position: absolute; pointer-events: none; background: rgba(22,25,31,0.97); color: var(--text-primary);
-  border: 1px solid rgba(240,138,44,0.4); border-radius: 10px; padding: 7px 10px; font-size: 12.5px;
-  box-shadow: 0 0 16px rgba(240,138,44,.2), 0 8px 24px rgba(0,0,0,.45); white-space: nowrap; opacity: 0; transition: opacity .1s; z-index: 5;
+  position: absolute; pointer-events: none; background: rgba(12,24,44,0.97); color: var(--text-primary);
+  border: 1px solid rgba(90,169,255,0.4); border-radius: 10px; padding: 7px 10px; font-size: 12.5px;
+  box-shadow: 0 0 16px rgba(90,169,255,.2), 0 8px 24px rgba(0,0,0,.45); white-space: nowrap; opacity: 0; transition: opacity .1s; z-index: 5;
 }
 .tip b { font-weight: 650; display: block; margin-bottom: 2px; color: var(--gold-hi); }
 .tip .tr { display: flex; justify-content: space-between; gap: 14px; }
@@ -175,9 +175,9 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 
 /* ---------- timeline ---------- */
 .tl { list-style: none; margin: 0; padding: 0; position: relative; }
-.tl::before { content: ""; position: absolute; left: 6px; top: 8px; bottom: 8px; width: 2px; background: linear-gradient(180deg, var(--gold), rgba(240,138,44,0.5)); opacity: .5; }
+.tl::before { content: ""; position: absolute; left: 6px; top: 8px; bottom: 8px; width: 2px; background: linear-gradient(180deg, var(--gold), rgba(90,169,255,0.5)); opacity: .5; }
 .tl li { position: relative; padding: 0 0 14px 26px; }
-.tl li::before { content: ""; position: absolute; left: 1px; top: 5px; width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--gold); background: var(--card); box-shadow: 0 0 8px rgba(240,138,44,.5); }
+.tl li::before { content: ""; position: absolute; left: 1px; top: 5px; width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--gold); background: var(--card); box-shadow: 0 0 8px rgba(90,169,255,.5); }
 .tl .d { font-size: 12.5px; color: var(--gold); font-variant-numeric: tabular-nums; opacity: .85; }
 .tl .x { font-size: 14.5px; }
 
@@ -185,9 +185,9 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 .field { display: block; margin-bottom: 12px; }
 .field span { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
 .field input { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(0,0,0,0.35); color: var(--text-primary); font-size: 16px; }
-.field input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(240,138,44,.15); }
-.btn { display: block; width: 100%; text-align: center; padding: 12px; border-radius: 12px; font-weight: 700; font-size: 16px; color: #1a0c02;
-  background: linear-gradient(180deg, #ffb066 0%, #f08a2c 50%, #c9621a 100%); box-shadow: 0 0 0 1px rgba(255,255,255,.2) inset, 0 6px 18px rgba(240,138,44,.25); }
+.field input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(90,169,255,.15); }
+.btn { display: block; width: 100%; text-align: center; padding: 12px; border-radius: 12px; font-weight: 700; font-size: 16px; color: #04101f;
+  background: linear-gradient(180deg, #9fd2ff 0%, #4da3ff 50%, #2a73c9 100%); box-shadow: 0 0 0 1px rgba(255,255,255,.2) inset, 0 6px 18px rgba(90,169,255,.25); }
 .btn.ghost { background: rgba(0,0,0,0.35); color: var(--bad-text); margin-top: 10px; box-shadow: 0 0 0 1px rgba(255,122,122,.3) inset; }
 .msg { font-size: 13.5px; color: var(--text-secondary); }
 .msg.err { color: var(--bad-text); }
@@ -199,14 +199,14 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   background: var(--tabbar); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
-  border-top: 1px solid rgba(240,138,44,0.25);
+  border-top: 1px solid rgba(90,169,255,0.25);
   box-shadow: 0 -8px 24px rgba(0,0,0,.35);
   display: flex; justify-content: space-around; padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
 }
 .tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; color: var(--text-muted); padding: 2px 0; }
 .tabbar button svg { width: 25px; height: 25px; }
 .tabbar button.on { color: var(--gold); }
-.tabbar button.on svg { filter: drop-shadow(0 0 6px rgba(240,138,44,.55)); }
+.tabbar button.on svg { filter: drop-shadow(0 0 6px rgba(90,169,255,.55)); }
 .masked { letter-spacing: .1em; }
 
 /* ---------- 下拉更新 ---------- */
@@ -216,7 +216,7 @@ main.pulling { transition: none; }
   position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 56px); z-index: 15;
   display: flex; justify-content: center; pointer-events: none; opacity: 0; transition: opacity .2s ease;
 }
-.ptr .ring { width: 36px; height: 36px; border-radius: 50%; background: var(--card); border: 1px solid var(--border); box-shadow: 0 0 14px rgba(240,138,44,.3);
+.ptr .ring { width: 36px; height: 36px; border-radius: 50%; background: var(--card); border: 1px solid var(--border); box-shadow: 0 0 14px rgba(90,169,255,.3);
   display: grid; place-items: center; color: var(--tint); }
 .ptr svg { width: 20px; height: 20px; transition: transform .2s ease; }
 .ptr.spin svg { animation: ptrspin .8s linear infinite; }
