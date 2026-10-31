@@ -37,9 +37,9 @@ function doPost(e) {
   return json({ ok: true, updated: now(), data: readAll() });
 }
 
-// 直接用瀏覽器打開網址時，只確認服務有在運作，不給資料
+// 直接用瀏覽器打開網址時，只確認服務有在運作、是第幾版，不給資料
 function doGet() {
-  return json({ ok: false, error: 'use the app' });
+  return json({ ok: false, error: 'use the app', version: SCRIPT_VERSION });
 }
 
 function readAll() {
