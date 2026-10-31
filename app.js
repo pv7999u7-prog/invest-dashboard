@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.11.01-4';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.11.01-5';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 const LATEST_SCRIPT = 3;   // 最新 Code.gs 的 SCRIPT_VERSION
 // 目前部署的 Code.gs 是第幾版：舊版沒有版本號，用回傳的內容推斷
 const scriptVersion = () => { const r = state.raw; if (!r) return null; if (r._scriptVersion) return r._scriptVersion; return r.bb ? 3 : r._sheetUrl ? 2 : 1; };
@@ -1058,18 +1058,24 @@ function pageCareer(d) {
   const first = ys[0];
   const firstSalary = first.salary || first.bSalary;
   const raised = ys.slice().reverse().find(y => y.raise);
+  // 年前、年中分紅各取最近一次有發的年度
+  const lastYe = ys.slice().reverse().find(y => y.yeTotal);
+  const lastMid = ys.slice().reverse().find(y => y.bonus);
   let h = `<h1 class="title">職涯與薪資</h1>
   <div class="card hero">
     <div class="lbl">${last.year} 年・${esc(last.title)}</div>
     <div class="big">${hidden ? MASK : 'NT$' + int(c.salary) + '<span style="font-size:17px;font-weight:600;color:var(--text-secondary)"> / 月</span>'}</div>
     <div class="meta">年資 ${last.tenure ?? '—'} 年・這次回任第 ${last.qTenure ?? '—'} 年・${last.age ?? '—'} 歲</div>
-    ${firstSalary && c.salary ? `<div style="margin-top:10px"><span class="pill up">回任以來月薪 ${pct(c.salary / firstSalary - 1, 0)}</span></div>` : ''}
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      ${firstSalary && c.salary ? `<span class="pill up">回任以來月薪 ${pct(c.salary / firstSalary - 1, 0)}</span>` : ''}
+      ${raised ? `<span class="pill up" style="background:var(--tint-wash);color:var(--tint)">${raised.year} 調薪 ${hidden ? '' : '+' + int(raised.raise) + '・'}${pctPlain(raised.raisePct)}</span>` : ''}
+    </div>
   </div>
   <div class="tiles t4">
+    <div class="tile"><div class="k">${lastYe ? lastYe.year + ' ' : ''}年前分紅</div><div class="v">${lastYe ? wan(lastYe.yeTotal) : '—'}</div><div class="n">${lastYe && lastYe.yeTotalMonths ? lastYe.yeTotalMonths + ' 個月・農曆年前' : '農曆年前'}</div></div>
+    <div class="tile"><div class="k">${lastMid ? lastMid.year + ' ' : ''}年中分紅</div><div class="v">${lastMid ? wan(lastMid.bonus) : '—'}</div><div class="n">${lastMid && lastMid.bonusMonths ? lastMid.bonusMonths + ' 個月・年中' : '年中'}</div></div>
     <div class="tile"><div class="k">${lf ? lf.year + ' 年收入' : '年收入'}</div><div class="v">${lf ? wan(inc(lf)) : '—'}</div><div class="n">${lf && lf.ot ? '含加班 ' + wan(lf.ot) : ''}</div></div>
     <div class="tile"><div class="k">年收入成長</div><div class="v ${cls(growth)}">${pct(growth)}</div><div class="n">${pf ? '比 ' + pf.year + ' 年' : ''}</div></div>
-    <div class="tile"><div class="k">${last.year} 年前分紅</div><div class="v">${wan(last.yeTotal)}</div><div class="n">${last.yeTotalMonths ? last.yeTotalMonths + ' 個月' : ''}</div></div>
-    <div class="tile"><div class="k">最近一次調薪</div><div class="v up">${raised ? (hidden ? MASK : '+' + int(raised.raise)) : '—'}</div><div class="n">${raised ? raised.year + ' 年・' + pctPlain(raised.raisePct) : ''}</div></div>
   </div>`;
 
   h += `<div class="card"><h3>年收入</h3><p class="cap">單位：萬元，含加班；點長條看年前、年中分紅明細</p>
