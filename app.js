@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.11.01-7';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.11.01-8';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 const LATEST_SCRIPT = 3;   // 最新 Code.gs 的 SCRIPT_VERSION
 // 目前部署的 Code.gs 是第幾版：舊版沒有版本號，用回傳的內容推斷
 const scriptVersion = () => { const r = state.raw; if (!r) return null; if (r._scriptVersion) return r._scriptVersion; return r.bb ? 3 : r._sheetUrl ? 2 : 1; };
@@ -592,14 +592,14 @@ function trendChart(host, pts) {
   let line = '';
   pts.forEach((p, i) => { line += (i ? 'L' : 'M') + X(p.date).toFixed(1) + ',' + Y(p.value).toFixed(1); });
   svgEl('path', { d: line + `L${X(pts[pts.length - 1].date)},${Y(0)}L${X(pts[0].date)},${Y(0)}Z`, fill: css('--area') }, svg);
-  svgEl('path', { d: line, fill: 'none', stroke: css('--s1'), 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
+  svgEl('path', { d: line, fill: 'none', stroke: css('--gold'), 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
   let cp = '';
   pts.forEach((p, i) => { if (p.cost == null) return; const xx = X(p.date).toFixed(1), yy = Y(p.cost).toFixed(1); cp += cp ? `H${xx}V${yy}` : `M${xx},${yy}`; });
   svgEl('path', { d: cp, fill: 'none', stroke: css('--text-muted'), 'stroke-width': 1.6, 'stroke-dasharray': '4 3' }, svg);
   const peak = pts.reduce((a, b) => (b.value > a.value ? b : a));
-  svgEl('circle', { cx: X(peak.date), cy: Y(peak.value), r: 4, fill: css('--s1'), stroke: css('--card'), 'stroke-width': 2 }, svg);
+  svgEl('circle', { cx: X(peak.date), cy: Y(peak.value), r: 4, fill: css('--gold'), stroke: css('--card'), 'stroke-width': 2 }, svg);
   const cross = svgEl('line', { y1: m.t, y2: H - m.b, stroke: css('--axis'), opacity: 0 }, svg);
-  const dot = svgEl('circle', { r: 5, fill: css('--s1'), stroke: css('--card'), 'stroke-width': 2, opacity: 0 }, svg);
+  const dot = svgEl('circle', { r: 5, fill: css('--gold'), stroke: css('--card'), 'stroke-width': 2, opacity: 0 }, svg);
   const tip = makeTip(host);
   const hit = svgEl('rect', { x: 0, y: 0, width: W, height: H, fill: 'transparent' }, svg);
   const move = ev => {
@@ -776,7 +776,7 @@ function pageOverview(d) {
     <div class="tile"><div class="k">${t.target ? t.target.year + ' 年底目標' : '年度目標'}</div><div class="v">${t.target ? wan(t.target.value) : '—'}</div><div class="n">${t.target ? (t.value >= t.target.value ? '已達成' : '還差 ' + wan(t.target.value - t.value)) : ''}</div></div>
   </div>`;
 
-  h += `<div class="card"><h3>資產走勢</h3><p class="cap">總現值（藍）與累計投入成本（虛線）</p>
+  h += `<div class="card"><h3>資產走勢</h3><p class="cap">總現值（金）與累計投入成本（虛線）</p>
     <div class="seg" id="rangeSeg">${['6M', '1Y', 'ALL'].map(k => `<button data-r="${k}" class="${trendRange === k ? 'on' : ''}">${{ '6M': '6 個月', '1Y': '1 年', ALL: '全部' }[k]}</button>`).join('')}</div>
     ${chart('c-trend', el => trendChart(el, rangePts(t.series)))}</div>`;
 
