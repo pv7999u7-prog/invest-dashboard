@@ -1,8 +1,8 @@
 // 離線快取：只快取 App 本身的檔案；試算表資料（script.google.com）一律不經過快取
 // 改了程式後，把 VERSION 改一下，下次連網開啟時就會換成新版
 const PREFIX = 'inv-';
-const VERSION = PREFIX + 'v13';
-const FILES = ['./', 'index.html', 'lock.js', 'app.js', 'manifest.webmanifest', 'icon-v2-180.png', 'icon-v2-192.png', 'icon-v2-512.png'];
+const VERSION = PREFIX + 'v14';
+const FILES = ['./', 'index.html', 'lock.js', 'app.js', 'manifest.webmanifest', 'icon-v3-180.png', 'icon-v3-192.png', 'icon-v3-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
