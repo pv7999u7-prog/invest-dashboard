@@ -18,7 +18,8 @@ const RANGES = {
   plan:      ['Plan', 'A1:I40'],
   milestone: ['Milestone', 'A1:B80'],
   expense:   ['固定支出', 'A1:L60'],
-  house:     ['House', 'A1:L10']
+  house:     ['House', 'A1:L10'],
+  bb:        ['BB', 'A1:AD60']
 };
 
 // App 用 POST 把密碼放在內容裡送過來，不會出現在網址上

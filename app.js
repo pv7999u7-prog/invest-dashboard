@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.11.01-2';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.11.01-3';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 
 // 配置類別的顏色跟著類別走（依試算表 Total Overall 的順序），不跟排名走
 const CAT_COLORS = { '虛擬貨幣': '--s2', '放貸': '--s7', '台股': '--s3', "Kids' 台股": '--s5', "Kids' 美股": '--s4', '美股': '--s1' };
@@ -339,13 +339,42 @@ function parseHouse(rows) {
   return list;
 }
 
+// BB 分頁：每個年度一列（A 欄是年份），底下沒有年份的列是同年度的結構調薪或晚發的分紅
+// 欄位：B 職稱（↑ 表示升遷）C 年資 D 本次年資 E 年齡｜F 月薪 G 年終總額 H 職務加給 I 年終 J 年終月數 K 總月數
+//      M 分紅時月薪 N 分紅 O 分紅月數｜Q 調薪 R 調薪%｜T 年收入 U 加班 W 年收入（含加班）AC 相當月數
+function parseCareer(rows) {
+  const years = [];
+  let cur = null, salary = null;
+  rows.forEach(x => {
+    const y = num(x[0]);
+    const take = (k, v) => { if (v != null) cur[k] = v; };
+    if (Number.isInteger(y) && y > 1990 && y < 2100) {
+      const title = str(x[1]);
+      cur = { year: y, title: title.replace(/^↑\s*/, ''), promoted: title.startsWith('↑'), tenure: num(x[2]), qTenure: num(x[3]), age: num(x[4]),
+        salary: num(x[5]), yeTotal: num(x[6]), allowance: num(x[7]), yeBonus: num(x[8]), yeMonths: num(x[9]), yeTotalMonths: num(x[10]),
+        bSalary: null, bonus: null, bonusMonths: null, raise: null, raisePct: null,
+        annual: num(x[19]), ot: num(x[20]), annualTotal: num(x[22]), months: num(x[28]), events: [] };
+      years.push(cur);
+    } else if (!cur) return;
+    else {
+      const label = str(x[1]), s = num(x[5]) || num(x[12]);
+      if (label) cur.events.push({ label, salary: s });
+    }
+    take('bSalary', num(x[12])); take('bonus', num(x[13])); take('bonusMonths', num(x[14]));
+    take('raise', num(x[16])); take('raisePct', num(x[17]));
+    [num(x[5]), num(x[12])].forEach(v => { if (v) salary = v; });
+  });
+  return { years, salary };
+}
+
 function parseAll(raw) {
   const safe = (fn, rows) => { try { return fn(rows || []); } catch (e) { console.error(e); return null; } };
   const d = {
     total: safe(parseTotal, raw.total), tw: safe(parseTw, raw.tw), us: safe(parseUs, raw.us),
     crypto: safe(parseCrypto, raw.crypto), myDca: safe(parseMyDca, raw.myDca), kidsUs: safe(parseKidsUs, raw.kidsUs),
     kidsTw: safe(parseKidsTw, raw.kidsTw), plan: safe(parsePlan, raw.plan), milestone: safe(parseMilestone, raw.milestone),
-    expense: safe(parseExpense, raw.expense), house: safe(parseHouse, raw.house)
+    expense: safe(parseExpense, raw.expense), house: safe(parseHouse, raw.house),
+    career: raw.bb ? safe(parseCareer, raw.bb) : null
   };
   derive(d);
   d.usAll = safe(() => combineUs(d));
@@ -897,6 +926,7 @@ const MORE = [
   { id: 'expense', title: '固定支出', sub: '每月與年度支出', icon: '▤', color: '--s2' },
   { id: 'house', title: '房產', sub: '購入價與估計現值', icon: '⌂', color: '--s6' },
   { id: 'milestone', title: '里程碑', sub: '重要資金動作', icon: '⚑', color: '--s7' },
+  { id: 'career', title: '職涯與薪資', sub: '年資、職位、薪水與分紅', icon: '▲', color: '--s4' },
   { id: 'settings', title: '設定', sub: '資料來源與密碼', icon: '⚙', color: '--axis' }
 ];
 function pageMore() {
@@ -1012,6 +1042,68 @@ function pageExpense(d) {
   return h;
 }
 
+function pageCareer(d) {
+  const c = d.career;
+  if (!c) return `<h1 class="title">職涯與薪資</h1><div class="card"><p class="msg">還讀不到 BB 分頁。請到 GitHub 複製最新的 Code.gs 貼到 Apps Script，再「管理部署作業 → 新版本」部署一次。</p></div>`;
+  const ys = c.years;
+  if (!ys.length) return '<div class="empty">BB 分頁沒有年度資料</div>';
+  const last = ys[ys.length - 1];
+  const full = ys.filter(y => y.annualTotal || y.annual);
+  const lf = full[full.length - 1], pf = full[full.length - 2];
+  const inc = y => y.annualTotal || y.annual;
+  const growth = lf && pf ? inc(lf) / inc(pf) - 1 : null;
+  const first = ys[0];
+  const firstSalary = first.salary || first.bSalary;
+  const raised = ys.slice().reverse().find(y => y.raise);
+  let h = `<h1 class="title">職涯與薪資</h1>
+  <div class="card hero">
+    <div class="lbl">${last.year} 年・${esc(last.title)}</div>
+    <div class="big">${hidden ? MASK : 'NT$' + int(c.salary) + '<span style="font-size:17px;font-weight:600;color:var(--text-secondary)"> / 月</span>'}</div>
+    <div class="meta">年資 ${last.tenure ?? '—'} 年・這次回任第 ${last.qTenure ?? '—'} 年・${last.age ?? '—'} 歲</div>
+    ${firstSalary && c.salary ? `<div style="margin-top:10px"><span class="pill up">回任以來月薪 ${pct(c.salary / firstSalary - 1, 0)}</span></div>` : ''}
+  </div>
+  <div class="tiles t4">
+    <div class="tile"><div class="k">${lf ? lf.year + ' 年收入' : '年收入'}</div><div class="v">${lf ? wan(inc(lf)) : '—'}</div><div class="n">${lf && lf.ot ? '含加班 ' + wan(lf.ot) : ''}</div></div>
+    <div class="tile"><div class="k">年收入成長</div><div class="v ${cls(growth)}">${pct(growth)}</div><div class="n">${pf ? '比 ' + pf.year + ' 年' : ''}</div></div>
+    <div class="tile"><div class="k">${last.year} 年終</div><div class="v">${wan(last.yeTotal)}</div><div class="n">${last.yeTotalMonths ? last.yeTotalMonths + ' 個月' : ''}</div></div>
+    <div class="tile"><div class="k">最近一次調薪</div><div class="v up">${raised ? (hidden ? MASK : '+' + int(raised.raise)) : '—'}</div><div class="n">${raised ? raised.year + ' 年・' + pctPlain(raised.raisePct) : ''}</div></div>
+  </div>`;
+
+  h += `<div class="card"><h3>年收入</h3><p class="cap">單位：萬元，含加班；點長條看年終、分紅明細</p>
+    ${chart('c-income', el => columnChart(el, full.map(y => "'" + String(y.year).slice(2)), [{ name: '年收入', color: '--s1', values: full.map(y => inc(y) / 10000) }],
+      { axis: v => dec(v, 0), topLabel: v => dec(v, 0), maxBar: 26, tip: i => { const y = full[i];
+        return `<b>${y.year}・${esc(y.title)}</b>${tr('年收入', ntd(y.annual))}${y.ot ? tr('加班', ntd(y.ot)) : ''}${y.annualTotal ? tr('合計', ntd(y.annualTotal)) : ''}${y.yeTotal ? tr('年終', ntd(y.yeTotal)) : ''}${y.bonus ? tr('分紅', ntd(y.bonus)) : ''}${y.months ? tr('相當', y.months + ' 個月') : ''}`; } }))}</div>`;
+
+  const sal = ys.filter(y => y.salary || y.bSalary);
+  h += `<div class="card"><h3>月薪</h3><p class="cap">每年年初的月薪；點長條看當年調薪</p>
+    ${chart('c-salary', el => columnChart(el, sal.map(y => "'" + String(y.year).slice(2)), [{ name: '月薪', color: '--s3', values: sal.map(y => (y.salary || y.bSalary) / 1000) }],
+      { axis: v => dec(v, 0) + 'k', maxBar: 22, tip: i => { const y = sal[i];
+        return `<b>${y.year}・${esc(y.title)}</b>${tr('月薪', ntd(y.salary || y.bSalary))}${y.raise ? tr('調薪', (hidden ? MASK : '+' + int(y.raise)) + '（' + pctPlain(y.raisePct) + '）') : ''}${y.events.map(e => tr(esc(e.label), e.salary ? ntd(e.salary) : '')).join('')}`; } }))}</div>`;
+
+  const bm = ys.filter(y => y.yeTotalMonths || y.bonusMonths);
+  h += `<div class="card"><h3>年終與分紅月數</h3><p class="cap">年終（含職務加給）與分紅，各相當幾個月薪</p>
+    <div class="legend"><span><i style="background:var(--s4)"></i>年終</span><span><i style="background:var(--s5)"></i>分紅</span></div>
+    ${chart('c-bonus', el => columnChart(el, bm.map(y => "'" + String(y.year).slice(2)), [
+      { name: '年終', color: '--s4', values: bm.map(y => y.yeTotalMonths) }, { name: '分紅', color: '--s5', values: bm.map(y => y.bonusMonths) }],
+      { axis: v => (Number.isInteger(v) ? String(v) : dec(v, 1)), maxBar: 14, tip: i => { const y = bm[i];
+        return `<b>${y.year}</b>${y.yeTotal ? tr('年終', ntd(y.yeTotal) + '（' + y.yeTotalMonths + ' 個月）') : ''}${y.allowance ? tr('　職務加給', ntd(y.allowance)) : ''}${y.yeBonus ? tr('　年終', ntd(y.yeBonus)) : ''}${y.bonus ? tr('分紅', ntd(y.bonus) + '（' + y.bonusMonths + ' 個月）') : ''}`; } }))}</div>`;
+
+  // 職位與調薪的時間軸
+  const tl = [];
+  ys.forEach(y => {
+    if (y === ys[0]) tl.push({ d: y.year, t: `回任・${y.title}` + (firstSalary ? `，月薪 ${hidden ? MASK : int(firstSalary)}` : '') });
+    else if (y.promoted) tl.push({ d: y.year, t: `升遷為 ${y.title}` });
+    y.events.forEach(e => tl.push({ d: y.year, t: e.label + (e.salary ? `，月薪 ${hidden ? MASK : int(e.salary)}` : '') }));
+  });
+  h += `<div class="sec">職位與調薪</div><div class="card"><ul class="tl">${tl.reverse().map(x => `<li><div class="d">${x.d}</div><div class="x">${x.t}</div></li>`).join('')}</ul></div>`;
+
+  h += `<div class="sec">逐年明細</div><div class="list">${ys.slice().reverse().map(y => `<div class="row">
+    <div class="main"><div class="t1" style="font-size:15px">${y.year}・${esc(y.title)}${y.promoted ? ' <span class="pill up" style="font-size:11px;padding:1px 6px">升遷</span>' : ''}</div>
+      <div class="t2" style="white-space:normal">月薪 ${ntd(y.salary || y.bSalary)}${y.yeTotal ? '・年終 ' + wan(y.yeTotal) : ''}${y.bonus ? '・分紅 ' + wan(y.bonus) : ''}${y.raise ? '・調薪 ' + pctPlain(y.raisePct) : ''}</div></div>
+    <div class="r"><div class="t1" style="font-size:15px">${inc(y) ? wan(inc(y)) : '—'}</div><div class="t2" style="color:var(--text-secondary)">${y.age ? y.age + ' 歲' : ''}</div></div></div>`).join('')}</div>`;
+  return h;
+}
+
 function pageHouse(d) {
   const list = d.house || [];
   if (!list.length) return '<div class="empty">找不到房產的資料</div>';
@@ -1062,7 +1154,7 @@ function pageSettings(first) {
 function route() { return (location.hash || '#overview').slice(1); }
 const PAGES = { overview: pageOverview, us: pageUs, tw: pageTw, crypto: pageCrypto, more: pageMore,
   'more/kids': pageKids, 'more/dca': pageDca, 'more/plan': pagePlan, 'more/expense': pageExpense,
-  'more/house': pageHouse, 'more/milestone': pageMilestone, 'more/settings': () => pageSettings(false) };
+  'more/house': pageHouse, 'more/milestone': pageMilestone, 'more/career': pageCareer, 'more/settings': () => pageSettings(false) };
 
 function render() {
   const r = route();
