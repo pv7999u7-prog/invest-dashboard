@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.11.01-14';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.11.01-15';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 const LATEST_SCRIPT = 3;   // 最新 Code.gs 的 SCRIPT_VERSION
 // 目前部署的 Code.gs 是第幾版：舊版沒有版本號，用回傳的內容推斷
 const scriptVersion = () => { const r = state.raw; if (!r) return null; if (r._scriptVersion) return r._scriptVersion; return r.bb ? 3 : r._sheetUrl ? 2 : 1; };
@@ -363,6 +363,8 @@ function parseCareer(rows) {
       const label = str(x[1]), s = num(x[5]) || num(x[12]);
       if (label) cur.events.push({ label, salary: s });
     }
+    // 年度調薪（Q、R 欄）照它出現的那一列排進時間軸，調薪後月薪取同一列的 M 欄
+    if (num(x[16])) cur.events.push({ raise: num(x[16]), raisePct: num(x[17]) ?? cur.raisePct, salary: num(x[12]) });
     take('bSalary', num(x[12])); take('bonus', num(x[13])); take('bonusMonths', num(x[14]));
     take('raise', num(x[16])); take('raisePct', num(x[17]));
     [num(x[5]), num(x[12])].forEach(v => { if (v) salary = v; });
@@ -1087,7 +1089,7 @@ function pageCareer(d) {
   h += `<div class="card"><h3>月薪</h3><p class="cap">每年年初的月薪；點長條看當年調薪</p>
     ${chart('c-salary', el => columnChart(el, sal.map(y => "'" + String(y.year).slice(2)), [{ name: '月薪', color: '--s3', values: sal.map(y => (y.salary || y.bSalary) / 1000) }],
       { axis: v => dec(v, 0) + 'k', maxBar: 22, tip: i => { const y = sal[i];
-        return `<b>${y.year}・${esc(y.title)}</b>${tr('月薪', ntd(y.salary || y.bSalary))}${y.raise ? tr('調薪', (hidden ? MASK : '+' + int(y.raise)) + '（' + pctPlain(y.raisePct) + '）') : ''}${y.events.map(e => tr(esc(e.label), e.salary ? ntd(e.salary) : '')).join('')}`; } }))}</div>`;
+        return `<b>${y.year}・${esc(y.title)}</b>${tr('月薪', ntd(y.salary || y.bSalary))}${y.raise ? tr('調薪', (hidden ? MASK : '+' + int(y.raise)) + '（' + pctPlain(y.raisePct) + '）') : ''}${y.events.filter(e => e.label).map(e => tr(esc(e.label), e.salary ? ntd(e.salary) : '')).join('')}`; } }))}</div>`;
 
   const bm = ys.filter(y => y.yeTotalMonths || y.bonusMonths);
   h += `<div class="card"><h3>分紅月數</h3><p class="cap">農曆年前分紅與年中分紅，各相當幾個月薪</p>
@@ -1102,7 +1104,8 @@ function pageCareer(d) {
   ys.forEach(y => {
     if (y === ys[0]) tl.push({ d: y.year, t: `回任・${y.title}` + (firstSalary ? `，月薪 ${hidden ? MASK : int(firstSalary)}` : '') });
     else if (y.promoted) tl.push({ d: y.year, t: `升遷為 ${y.title}` });
-    y.events.forEach(e => tl.push({ d: y.year, t: e.label + (e.salary ? `，月薪 ${hidden ? MASK : int(e.salary)}` : '') }));
+    y.events.forEach(e => tl.push({ d: y.year, t: (e.raise ? `年度調薪 ${hidden ? '' : '+' + int(e.raise) + '・'}${pctPlain(e.raisePct)}` : e.label)
+      + (e.salary ? `，月薪 ${hidden ? MASK : int(e.salary)}` : '') }));
   });
   h += `<div class="sec">職位與調薪</div><div class="card"><ul class="tl">${tl.reverse().map(x => `<li><div class="d">${x.d}</div><div class="x">${x.t}</div></li>`).join('')}</ul></div>`;
 
