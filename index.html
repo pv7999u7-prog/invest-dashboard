@@ -184,6 +184,19 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 .tabbar button svg { width: 25px; height: 25px; }
 .tabbar button.on { color: var(--tint); }
 .masked { letter-spacing: .1em; }
+
+/* ---------- 下拉更新 ---------- */
+main { transition: transform .25s ease; }
+main.pulling { transition: none; }
+.ptr {
+  position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 56px); z-index: 15;
+  display: flex; justify-content: center; pointer-events: none; opacity: 0; transition: opacity .2s ease;
+}
+.ptr .ring { width: 36px; height: 36px; border-radius: 50%; background: var(--card); box-shadow: 0 2px 10px rgba(0,0,0,.14);
+  display: grid; place-items: center; color: var(--tint); }
+.ptr svg { width: 20px; height: 20px; transition: transform .2s ease; }
+.ptr.spin svg { animation: ptrspin .8s linear infinite; }
+@keyframes ptrspin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -199,6 +212,9 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
   </button>
 </div>
 
+<div class="ptr" id="ptr"><div class="ring">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+</div></div>
 <main id="view"></main>
 
 <nav class="tabbar" id="tabbar">

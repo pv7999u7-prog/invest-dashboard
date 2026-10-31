@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.10.31-2';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.11.01-1';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 
 // 配置類別的顏色跟著類別走（依試算表 Total Overall 的順序），不跟排名走
 const CAT_COLORS = { '虛擬貨幣': '--s2', '放貸': '--s7', '台股': '--s3', "Kids' 台股": '--s5', "Kids' 美股": '--s4', '美股': '--s1' };
@@ -1120,6 +1120,52 @@ function bindPage() {
 document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('click', () => { location.hash = b.dataset.tab; window.scrollTo(0, 0); }));
 $('#back').addEventListener('click', () => { location.hash = route().split('/')[0]; });
 $('#refresh').addEventListener('click', () => refresh());
+
+// 下拉更新：畫面在最頂端時往下拉超過門檻、放開就重新讀取試算表
+(() => {
+  const TRIGGER = 70, MAX = 120;
+  const view = $('#view'), ptr = $('#ptr'), icon = ptr.querySelector('svg');
+  const ARROW = '<path d="M12 5v14M6 13l6 6 6-6"/>';
+  const SPIN = '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4h-4"/>';
+  let startY = null, dist = 0, busy = false;
+  const show = d => {
+    view.style.transform = d ? `translateY(${d}px)` : '';
+    ptr.style.opacity = Math.min(1, d / TRIGGER);
+    ptr.style.transform = `translateY(${Math.max(0, d - 44)}px)`;
+    if (!busy) icon.style.transform = d >= TRIGGER ? 'rotate(180deg)' : '';
+  };
+  const reset = () => { view.classList.remove('pulling'); show(0); };
+  document.addEventListener('touchstart', e => {
+    startY = null;
+    if (busy || lock.locked || window.scrollY > 0 || e.touches.length !== 1) return;
+    if (e.target.closest('.chart, input, textarea, .seg')) return;   // 圖表上拖曳是看數值，不觸發更新
+    startY = e.touches[0].clientY; dist = 0;
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (startY == null) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || window.scrollY > 0) { startY = null; reset(); return; }
+    e.preventDefault();
+    view.classList.add('pulling');
+    dist = Math.min(MAX, dy * 0.5);
+    show(dist);
+  }, { passive: false });
+  document.addEventListener('touchend', async () => {
+    if (startY == null) return;
+    startY = null;
+    view.classList.remove('pulling');
+    if (dist < TRIGGER) { reset(); return; }
+    busy = true;
+    icon.innerHTML = SPIN; icon.style.transform = ''; ptr.classList.add('spin');
+    show(56);
+    const t0 = Date.now();
+    await refresh();
+    await new Promise(r => setTimeout(r, Math.max(0, 600 - (Date.now() - t0))));   // 轉一下再收，避免一閃而過
+    ptr.classList.remove('spin'); icon.innerHTML = ARROW;
+    busy = false; dist = 0;
+    reset();
+  });
+})();
 $('#eye').addEventListener('click', () => { hidden = !hidden; try { localStorage.setItem(LS.hide, hidden ? '1' : '0'); } catch (e) {} render(); });
 window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
 let rt;
