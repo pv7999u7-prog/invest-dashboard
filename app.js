@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.11.01-15';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.11.01-16';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 const LATEST_SCRIPT = 3;   // 最新 Code.gs 的 SCRIPT_VERSION
 // 目前部署的 Code.gs 是第幾版：舊版沒有版本號，用回傳的內容推斷
 const scriptVersion = () => { const r = state.raw; if (!r) return null; if (r._scriptVersion) return r._scriptVersion; return r.bb ? 3 : r._sheetUrl ? 2 : 1; };
@@ -330,16 +330,53 @@ function parseExpense(rows) {
   return out;
 }
 
+// House 分頁上半部是房產，A 欄寫「房貸」那一列以下是房貸：
+// A 房產名稱 B 基準日 C 基準日剩餘本金 D 年利率 E 每月還款 F 每月扣款日 G 到期日 H 初貸日 I 初貸金額 J 還本方式
 function parseHouse(rows) {
   const list = [];
-  for (let r = 2; r < rows.length; r++) {
+  let r = 2;
+  for (; r < rows.length; r++) {
     const x = rows[r];
+    if (str(x[0]) === '房貸') break;
     if (!str(x[0]) || !num(x[2])) continue;
     const housePing = num(x[4]), estPark = num(x[10]), estUnit = num(x[11]);
     list.push({ name: str(x[0]), date: dateText(x[1]).replace(/^(\d{4}\/\d{2})\/01$/, '$1'), price: num(x[2]), ping: num(x[3]), housePing, parkN: num(x[6]), unit: num(x[8]),
       estUnit, estPark, est: housePing && estUnit ? housePing * estUnit + (estPark || 0) : null });
   }
+  for (r++; r < rows.length; r++) {
+    const x = rows[r], h = list.find(h => h.name === str(x[0]));
+    const base = toDateStr(x[1]), bal = num(x[2]), rate = num(x[3]), pmt = num(x[4]);
+    if (!h || !base || !bal || rate == null || !pmt) continue;
+    h.loan = loanSchedule({ base, bal, rate, pmt, day: num(x[5]) || Number(base.slice(8)), end: toDateStr(x[6]),
+      start: toDateStr(x[7]), orig: num(x[8]), method: str(x[9]) || '本息平均攤還' });
+  }
   return list;
+}
+
+// 本息平均攤還：從基準日的剩餘本金開始，每月扣款日先付當月利息，其餘還本金
+function loanSchedule(l) {
+  const [by, bm] = l.base.split('/').map(Number);
+  const endT = l.end ? toTime(l.end) : Infinity, now = Date.now();
+  const fmt = (y, m, d) => `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}`;
+  const sched = [];
+  let bal = l.bal;
+  for (let i = 1; bal > 0.5 && i < 600; i++) {
+    const y = by + Math.floor((bm - 1 + i) / 12), m = (bm - 1 + i) % 12 + 1;
+    const d = Math.min(l.day, new Date(y, m, 0).getDate());
+    let date = fmt(y, m, d);
+    if (toTime(date) > endT) date = l.end;
+    const interest = Math.round(bal * l.rate / 12);
+    // 到期那一期（或剩不到一期）把剩下的本金一次還清
+    const last = toTime(date) >= endT || l.pmt - interest >= bal;
+    const principal = last ? bal : l.pmt - interest;
+    bal -= principal;
+    sched.push({ date, interest, principal, pay: principal + interest, bal });
+    if (last) break;
+  }
+  const paid = sched.filter(p => toTime(p.date) <= now);
+  const left = sched.slice(paid.length);
+  return { ...l, sched, balance: paid.length ? paid[paid.length - 1].bal : l.bal, next: left[0] || null, paidN: paid.length,
+    leftN: left.length, leftInterest: left.reduce((s, p) => s + p.interest, 0), payoff: sched.length ? sched[sched.length - 1].date : null };
 }
 
 // BB 分頁：每個年度一列（A 欄是年份），底下沒有年份的列是同年度的結構調薪或晚發的年中分紅
@@ -1120,9 +1157,10 @@ function pageHouse(d) {
   const list = d.house || [];
   if (!list.length) return '<div class="empty">找不到房產的資料</div>';
   const tb = list.reduce((s, x) => s + x.price, 0), te = list.reduce((s, x) => s + (x.est || 0), 0);
+  const loanLeft = list.reduce((s, x) => s + (x.loan ? x.loan.balance : 0), 0);
   let h = `<h1 class="title">房產</h1>
   <div class="card hero"><div class="lbl">估計總值</div><div class="big">${hidden ? MASK : int(te) + ' 萬'}</div>
-    <div class="meta">購入合計 ${hidden ? MASK : int(tb) + ' 萬'}</div><div style="margin-top:10px"><span class="pill up">${hidden ? MASK : '+' + int(te - tb) + ' 萬'}（${pct((te - tb) / tb, 0)}）</span></div></div>
+    <div class="meta">購入合計 ${hidden ? MASK : int(tb) + ' 萬'}${loanLeft ? `・房貸剩 ${wan(loanLeft)}・淨值 ${wan(te * 10000 - loanLeft)}` : ''}</div><div style="margin-top:10px"><span class="pill up">${hidden ? MASK : '+' + int(te - tb) + ' 萬'}（${pct((te - tb) / tb, 0)}）</span></div></div>
   <div class="card"><h3>購入價 vs 估計現值</h3><p class="cap">估值＝房屋坪數 × 估計單價 ＋ 估計車位價</p>
     <div class="legend"><span><i style="background:var(--axis)"></i>購入價</span><span><i style="background:var(--s6)"></i>估計現值</span></div>
     ${chart('c-house', el => columnChart(el, list.map(x => x.name), [{ name: '購入', color: '--axis', values: list.map(x => x.price) }, { name: '估值', color: '--s6', values: list.map(x => x.est) }],
@@ -1134,8 +1172,74 @@ function pageHouse(d) {
       <div class="kv"><span>車位</span><span>${x.parkN || 0} 個</span></div>
       <div class="kv"><span>購入單價／估計單價</span><span>${x.unit != null ? dec(x.unit, 1) : "—"} → ${x.estUnit != null ? dec(x.estUnit, 1) : "—"} 萬/坪</span></div>
       <div class="kv"><span>估計現值</span><span>${hidden ? MASK : int(x.est) + ' 萬'}</span></div></div>`;
+    if (x.loan) h += loanCard(x);
   });
   return h;
+}
+
+function loanCard(x) {
+  const l = x.loan, n = l.next;
+  const y = Math.floor(l.leftN / 12), mo = l.leftN % 12;
+  const equity = x.est != null ? x.est * 10000 - l.balance : null;
+  const done = l.orig ? (l.orig - l.balance) / l.orig : null;
+  // 總期數＝初貸日到到期日的月數
+  const ym = d => { const [a, b] = d.split('/').map(Number); return a * 12 + b; };
+  const totalN = l.start && l.end ? ym(l.end) - ym(l.start) : null;
+  return `<div class="card"><h3>${esc(x.name)}・房貸</h3><p class="cap">年利率 ${dec(l.rate * 100, 2)}%・每月 ${l.day} 號扣 ${ntd(l.pmt)}・${esc(l.method)}</p>
+    <div class="lbl" style="margin-top:6px">剩餘房貸</div><div class="big" style="font-size:28px">${ntd(l.balance)}</div>
+    <div class="meta">${l.paidN ? `基準日後已扣 ${l.paidN} 期，本金少了 ${ntd(l.bal - l.balance)}` : `基準日 ${esc(l.base)}`}</div>
+    ${done != null ? `<div class="kv" style="margin-top:10px"><span>已還本金 ${ntd(l.orig - l.balance)}</span><span>${dec(done * 100, 1)}%</span></div>
+    <div class="stack" style="height:10px;margin:6px 0 4px"><div style="width:${done * 100}%;background:var(--gold)"></div><div style="width:${(1 - done) * 100}%;background:var(--card-2)"></div></div>` : ''}
+    ${chart('c-loan-' + x.loan.base.replace(/\//g, '') + x.loan.bal, el => loanChart(el, l))}
+    ${n ? `<div class="kv"><span>下次扣款</span><span>${esc(n.date)}</span></div>
+    <div class="kv"><span>這期利息／本金</span><span>${ntd(n.interest)}／${ntd(n.principal)}</span></div>` : ''}
+    <div class="kv"><span>剩餘期數</span><span>${l.leftN} 期（${y} 年${mo ? ' ' + mo + ' 個月' : ''}）${totalN ? '／共 ' + totalN + ' 期' : ''}</span></div>
+    ${l.orig ? `<div class="kv"><span>初貸金額</span><span>${ntd(l.orig)}${l.start ? '（' + esc(l.start) + '）' : ''}</span></div>` : ''}
+    <div class="kv"><span>剩餘利息（預估）</span><span>${ntd(l.leftInterest)}</span></div>
+    <div class="kv"><span>還清日</span><span>${esc(l.end || l.payoff)}</span></div>
+    ${equity != null ? `<div class="kv"><span>房屋淨值（估值 − 房貸）</span><span>${wan(equity)}</span></div>` : ''}</div>`;
+}
+
+// 房貸餘額走勢：基準日到還清，標出今天
+function loanChart(host, l) {
+  host.innerHTML = '';
+  const pts = [{ date: l.base, bal: l.bal }, ...l.sched];
+  const W = host.clientWidth, H = 180, m = { t: 12, r: 50, b: 24, l: 6 };
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, height: H }, host);
+  const x0 = toTime(pts[0].date), x1 = toTime(pts[pts.length - 1].date);
+  const X = t => m.l + (t - x0) / Math.max(1, x1 - x0) * (W - m.l - m.r);
+  const step = niceStep(l.bal, 4), yMax = Math.ceil(l.bal / step) * step;
+  const Y = v => m.t + (1 - v / yMax) * (H - m.t - m.b);
+  for (let v = 0; v <= yMax + 1; v += step) {
+    svgEl('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css(v ? '--grid' : '--axis') }, svg);
+    if (v) svgText(svg, W - m.r + 6, Y(v) + 4, hidden ? '' : dec(v / 10000, 0) + '萬');
+  }
+  svgText(svg, m.l, H - 6, pts[0].date.slice(0, 4));
+  svgText(svg, W - m.r, H - 6, pts[pts.length - 1].date.slice(0, 4), { 'text-anchor': 'end' });
+  let line = '';
+  pts.forEach((p, i) => { line += (i ? 'L' : 'M') + X(toTime(p.date)).toFixed(1) + ',' + Y(p.bal).toFixed(1); });
+  svgEl('path', { d: line + `L${X(x1)},${Y(0)}L${X(x0)},${Y(0)}Z`, fill: css('--area') }, svg);
+  svgEl('path', { d: line, fill: 'none', stroke: css('--gold'), 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
+  const nx = X(Math.min(x1, Math.max(x0, Date.now())));
+  svgEl('circle', { cx: nx, cy: Y(l.balance), r: 4.5, fill: css('--gold'), stroke: css('--card'), 'stroke-width': 2 }, svg);
+  svgText(svg, nx + 7, Y(l.balance) - 7, '今天', { fill: css('--text-secondary') });
+  const cross = svgEl('line', { y1: m.t, y2: H - m.b, stroke: css('--axis'), opacity: 0 }, svg);
+  const dot = svgEl('circle', { r: 5, fill: css('--gold'), stroke: css('--card'), 'stroke-width': 2, opacity: 0 }, svg);
+  const tip = makeTip(host);
+  const hit = svgEl('rect', { x: 0, y: 0, width: W, height: H, fill: 'transparent' }, svg);
+  const move = ev => {
+    const mx = pointerX(ev, svg);
+    let best = pts[0];
+    pts.forEach(p => { if (Math.abs(X(toTime(p.date)) - mx) < Math.abs(X(toTime(best.date)) - mx)) best = p; });
+    const bx = X(toTime(best.date));
+    cross.setAttribute('x1', bx); cross.setAttribute('x2', bx); cross.setAttribute('opacity', 1);
+    dot.setAttribute('cx', bx); dot.setAttribute('cy', Y(best.bal)); dot.setAttribute('opacity', 1);
+    tip.show(`<b>${best.date}</b>${tr('剩餘本金', ntd(best.bal))}${best.interest != null ? tr('當期利息', ntd(best.interest)) + tr('當期本金', ntd(best.principal)) : ''}`, bx, Y(best.bal));
+  };
+  const leave = () => { tip.hide(); cross.setAttribute('opacity', 0); dot.setAttribute('opacity', 0); };
+  hit.addEventListener('pointermove', move);
+  hit.addEventListener('pointerdown', move);
+  hit.addEventListener('pointerleave', leave);
 }
 
 function pageMilestone(d) {
