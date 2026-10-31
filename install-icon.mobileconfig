@@ -10,7 +10,7 @@
       <key>PayloadIdentifier</key><string>io.github.pv7999u7-prog.invest-dashboard.webclip</string>
       <key>PayloadUUID</key><string>702057DA-5ACA-5CCC-958F-A2339C1F36A8</string>
       <key>PayloadDisplayName</key><string>投資總覽</string>
-      <key>Label</key><string>投資總覽</string>
+      <key>Label</key><string>HK</string>
       <key>URL</key><string>https://pv7999u7-prog.github.io/invest-dashboard/</string>
       <key>FullScreen</key><true/>
       <key>IsRemovable</key><true/>
