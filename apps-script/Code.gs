@@ -17,7 +17,7 @@ const RANGES = {
   kidsTw:    ['橙&澈 定期定額台股', 'A1:J80'],
   plan:      ['Plan', 'A1:I40'],
   milestone: ['Milestone', 'A1:B80'],
-  expense:   ['固定支出', 'A1:L25'],
+  expense:   ['固定支出', 'A1:L60'],
   house:     ['House', 'A1:L10']
 };
 

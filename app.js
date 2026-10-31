@@ -4,7 +4,7 @@
 
 const LS = { cfg: 'inv-cfg-v1', cache: 'inv-cache-v1', hide: 'inv-hide-v1' };
 const AUTO_REFRESH_MIN = 5;   // App 從背景回到前景時，超過幾分鐘沒更新就重抓
-const APP_VERSION = '2026.11.01-1';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
+const APP_VERSION = '2026.11.01-2';   // 顯示在設定頁，用來確認 iPhone 上是不是新版
 
 // 配置類別的顏色跟著類別走（依試算表 Total Overall 的順序），不跟排名走
 const CAT_COLORS = { '虛擬貨幣': '--s2', '放貸': '--s7', '台股': '--s3', "Kids' 台股": '--s5', "Kids' 美股": '--s4', '美股': '--s1' };
@@ -290,36 +290,40 @@ function parseMilestone(rows) {
   return rows.filter(r => str(r[1])).map(r => ({ date: fmtCompactDate(r[0]), text: str(r[1]) }));
 }
 
+// 版面：每列月份標題（1、2、3…），底下每個月兩欄「項目｜金額」；再往下是「年度基本總支出」的「項目｜Total」表
 function parseExpense(rows) {
+  const isMonthRow = r => { const a = num(cell(rows, r, 0)), b = num(cell(rows, r, 2));
+    return Number.isInteger(a) && a >= 1 && a <= 12 && b === a + 1 && !str(cell(rows, r, 1)); };
+  const blocks = [];
+  for (let r = 0; r < rows.length; r++) if (isMonthRow(r)) blocks.push(r);
+  const summaryRow = rows.findIndex(row => /^年度/.test(str(row[0])) || str(row[0]) === '項目');
   const months = [];
-  [0, 8].forEach(b => {
-    const next = b === 0 ? 8 : 16;
+  blocks.forEach((b, i) => {
+    let end = i + 1 < blocks.length ? blocks[i + 1] : rows.length;
+    if (summaryRow > b && summaryRow < end) end = summaryRow;
     for (let m = 0; m < 6; m++) {
       const col = m * 2, mo = num(cell(rows, b, col));
       if (!mo) continue;
       const items = [];
-      for (let r = b + 2; r < next; r++) {
+      for (let r = b + 1; r < end; r++) {
         const label = str(cell(rows, r, col)), amt = num(cell(rows, r, col + 1));
         if (label && amt) items.push({ label, amt });
       }
-      const total = num(cell(rows, b + 1, col + 1)) || items.reduce((s, i) => s + i.amt, 0);
-      months.push({ month: mo, total, items });
+      months.push({ month: mo, total: items.reduce((s, it) => s + it.amt, 0), items });
     }
   });
   months.sort((a, b) => a.month - b.month);
-  const out = { months, periods: [], cats: [] };
-  for (let r = 0; r < rows.length; r++) {
-    const p = str(cell(rows, r, 4));
-    if (/^\d+~\d+$/.test(p) && num(cell(rows, r, 5))) out.periods.push({ label: p.replace('~', '–') + ' 月', amt: num(cell(rows, r, 5)) });
-  }
-  const start = rows.findIndex(r => str(r[4]) === '1~12');
-  if (start >= 0) {
-    for (let r = start; r < rows.length && str(rows[r][0]); r++) {
+  const out = { months, cats: [], title: '' };
+  if (summaryRow >= 0) {
+    if (/^年度/.test(str(rows[summaryRow][0]))) out.title = str(rows[summaryRow][0]);
+    const hdr = rows.findIndex((row, r) => r >= summaryRow && str(row[0]) === '項目');
+    for (let r = (hdr >= 0 ? hdr : summaryRow) + 1; r < rows.length && str(rows[r][0]); r++) {
       const a = num(rows[r][1]);
       if (a) out.cats.push({ label: str(rows[r][0]), amt: a, note: str(rows[r][2]) });
     }
   }
-  out.annual = (out.periods.find(p => p.label.startsWith('1–12')) || {}).amt || months.reduce((s, m) => s + m.total, 0);
+  out.monthsTotal = months.reduce((s, m) => s + m.total, 0);
+  out.annual = out.cats.length ? out.cats.reduce((s, c) => s + c.amt, 0) : out.monthsTotal;
   return out;
 }
 
@@ -984,9 +988,12 @@ function pageExpense(d) {
   const months = Array.from({ length: 12 }, (_, i) => e.months.find(m => m.month === i + 1) || { month: i + 1, total: 0, items: [] });
   const curM = new Date().getMonth() + 1;
   const next = [0, 1, 2].map(k => months[(curM - 1 + k) % 12]);
+  const diff = Math.abs(e.monthsTotal - e.annual) > 1;
   let h = `<h1 class="title">固定支出</h1>
+  <div class="card hero"><div class="lbl">${esc(e.title || '年度總支出')}</div><div class="big">${ntd(e.annual)}</div>
+    <div class="meta">平均每月 ${ntd(e.annual / 12)}${diff ? '・每月明細合計 ' + ntd(e.monthsTotal) : ''}</div></div>
   <div class="tiles">
-    <div class="tile"><div class="k">年度合計</div><div class="v">${wan(e.annual)}</div><div class="n">平均每月 ${wan(e.annual / 12)}</div></div>
+    <div class="tile"><div class="k">本月（${curM} 月）</div><div class="v">${wan(months[curM - 1].total)}</div><div class="n">${months[curM - 1].items.length} 個項目</div></div>
     <div class="tile"><div class="k">接下來三個月</div><div class="v">${wan(next.reduce((s, m) => s + m.total, 0))}</div><div class="n">${next.map(m => m.month + '月').join('、')}</div></div>
   </div>
   <div class="card"><h3>每月固定支出</h3><p class="cap">點長條可看當月項目</p>
@@ -994,11 +1001,14 @@ function pageExpense(d) {
       { axis: v => (v ? dec(v / 10000, 0) + '萬' : '0'), maxBar: 20, tip: i => { const m = months[i];
         return `<b>${m.month} 月</b>${m.items.length ? m.items.map(it => tr(esc(it.label), ntd(it.amt))).join('') : tr('項目', '無')}${tr('合計', ntd(m.total))}`; } }))}</div>`;
   if (e.cats.length) {
-    h += `<div class="card"><h3>年度分類</h3><p class="cap">試算表的分類小計</p>
+    h += `<div class="card"><h3>年度分類</h3><p class="cap">${esc(e.title || '試算表的分類小計')}</p>
       ${chart('c-exp-cat', el => hbarChart(el, e.cats.slice().sort((a, b) => b.amt - a.amt).map(c => ({ label: c.label.replace(/\(.*\)/, ''), value: c.amt, color: '--s2',
-        text: dec(c.amt / 10000, 1) + ' 萬', html: tr('金額', ntd(c.amt)) + (c.note ? tr('備註', esc(c.note)) : '') }))))}</div>`;
+        text: dec(c.amt / 10000, 1) + ' 萬', html: tr('金額', ntd(c.amt)) + tr('比重', pctPlain(c.amt / e.annual)) + (c.note ? tr('備註', esc(c.note)) : '') }))))}</div>`;
   }
-  if (e.periods.length) h += `<div class="list">${e.periods.map(p => `<div class="row"><div class="main"><div class="t1" style="font-size:15px">${p.label}</div></div><div class="r"><div class="t1" style="font-size:15px">${ntd(p.amt)}</div></div></div>`).join('')}</div>`;
+  h += `<div class="sec">每月明細</div><div class="list">${months.map(m => `<div class="row">
+    <div class="main"><div class="t1" style="font-size:15px">${m.month} 月${m.month === curM ? '（本月）' : ''}</div>
+      <div class="t2" style="white-space:normal">${m.items.length ? m.items.map(it => esc(it.label) + ' ' + (hidden ? '••••' : dec(it.amt / 10000, 1) + '萬')).join('・') : '無'}</div></div>
+    <div class="r"><div class="t1" style="font-size:15px">${ntd(m.total)}</div></div></div>`).join('')}</div>`;
   return h;
 }
 
